@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Projection of Points · Simatrix</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+
+<!-- Boot diagnostic: turns a blank page into an actionable message. Self-removed by main.js on success. -->
+<script>
+(function(){
+  function overlay(title, detail){
+    if(document.getElementById('boot-error')) return;
+    var add=function(){
+      var d=document.createElement('div'); d.id='boot-error'; d.setAttribute('role','alert');
+      d.style.cssText='position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;background:#faf8f3;font-family:system-ui,sans-serif';
+      d.innerHTML='<div style="max-width:560px;border:1px solid #d9d2c3;border-radius:10px;padding:24px 28px;background:#fffdf8;color:#221f18">'
+        +'<h1 style="margin:0 0 10px;font-size:18px;font-weight:700">'+title+'</h1>'
+        +'<div style="font-size:14px;line-height:1.65;color:#564e3c">'+detail+'</div></div>';
+      document.body.appendChild(d);
+    };
+    if(document.body) add(); else window.addEventListener('DOMContentLoaded',add);
+  }
+  function code(s){return '<code style="background:#efebe1;padding:2px 5px;border-radius:4px">'+s+'</code>';}
+  window.addEventListener('error',function(e){
+    overlay('The simulation hit an error', code((e&&e.message)||'Unknown error')+'<br><br>Open the browser console (F12 → Console) and share the first red error.');
+  });
+  window.addEventListener('unhandledrejection',function(e){
+    overlay('The simulation hit an error', code((e&&e.reason)||'Unhandled promise rejection'));
+  });
+  setTimeout(function(){
+    if(window.__simStarted) return;
+    if(location.protocol==='file:'){
+      overlay('Open this through a web server, not a file',
+        'This page is open as a '+code('file://')+' URL, which browsers block from loading ES modules, so nothing runs and the page stays blank.<br><br>'
+        +'Serve the folder over HTTP instead. With XAMPP started, open:<br><br>'+code('http://localhost/module1/'));
+    } else {
+      overlay('The simulation didn’t finish loading',
+        'The page loaded but the 3D module didn’t initialise.<br><br>'
+        +'• It needs internet on first load (Three.js loads from a CDN).<br>'
+        +'• Open the console (F12) and share the first red error.');
+    }
+  }, 6000);
+})();
+</script>
+
+<style>
+/* ─────────────────────────────────────────────────────────────
+   DESIGN TOKENS — mirror DESIGN.shared.md. Never hard-code values
+   elsewhere; CSS and JS read these custom properties.
+   ───────────────────────────────────────────────────────────── */
+:root{
+  /* guidance accent (chrome only — never inside the viewport) */
+  --accent:#1f66b5; --accent-strong:#17539b; --accent-soft:#e3ecf7;
+  /* neutrals */
+  --paper:#faf8f3; --panel:#efebe1; --geometry-fill:#e7e1d4;
+  --ink:#221f18; --ink2:#564e3c; --bench:#938b7b;
+  --border:#d9d2c3; --track:#cfc8b8;
+  /* functional viewport encodings */
+  --hp:#007f7c; --vp:#bc5d1e;
+  /* status */
+  --success:#2e7d52; --success-soft:#e2efe8;
+  /* radii */
+  --r-xs:4px; --r-sm:6px; --r-md:10px;
+  /* spacing */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  /* type */
+  --font:"Atkinson Hyperlegible",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+  /* elevation */
+  --shadow-overlay:0 4px 16px color-mix(in srgb,var(--ink) 12%,transparent);
+  --halo:0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  display:flex;overflow:hidden;
+  font-family:var(--font);font-size:16px;font-weight:400;line-height:1.6;
+  color:var(--ink);background:var(--paper);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Visible focus ring everywhere; never removed. */
+:focus-visible{outline:none;box-shadow:var(--halo);border-radius:var(--r-xs)}
+
+/* Screen-reader only */
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* ─────────────────────────────────────────────────────────────
+   STEPPER PANEL (the wizard) — quiet chrome, paper/panel tones
+   ───────────────────────────────────────────────────────────── */
+#stepper{
+  flex:0 0 348px;height:100%;overflow-y:auto;
+  background:var(--panel);border-right:1px solid var(--border);
+  padding:var(--s5) var(--s4) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s5);
+}
+.brand{
+  font-size:.75rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink2);margin:0;
+}
+.brand span{color:var(--accent)}
+
+/* Step rail (signature) */
+.rail{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s1)}
+.rail-item{
+  width:100%;display:flex;align-items:center;gap:var(--s3);
+  min-height:44px;padding:0 var(--s2);
+  background:transparent;border:0;border-radius:var(--r-sm);
+  font:inherit;text-align:left;color:var(--ink2);cursor:pointer;
+}
+.rail-item:hover:not([disabled]){background:color-mix(in srgb,var(--accent-soft) 60%,transparent)}
+.rail-item[disabled]{cursor:default;opacity:.55}
+.disc{
+  flex:none;width:24px;height:24px;border-radius:50%;
+  display:grid;place-items:center;
+  font:500 .75rem/1 var(--mono);
+  border:1.5px solid var(--bench);color:var(--bench);background:transparent;
+}
+.rail-item.done .disc{background:var(--success);border-color:var(--success);color:var(--paper)}
+.rail-item.current .disc{background:var(--accent);border-color:var(--accent);color:var(--paper);box-shadow:0 0 0 4px var(--accent-soft)}
+.rail-item.current{color:var(--ink);font-weight:700}
+.rail-label{font-size:.875rem;line-height:1.2}
+
+.divider{height:1px;background:var(--border);border:0;margin:0}
+
+/* Step card */
+.step-card{
+  background:var(--paper);border:1px solid var(--border);border-radius:var(--r-md);
+  padding:var(--s5) var(--s4);
+  display:flex;flex-direction:column;gap:var(--s3);
+}
+@keyframes stepIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.step-card.swap{animation:stepIn .22s ease}
+.eyebrow{font-size:.75rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);margin:0}
+.step-title{font-size:1.35rem;font-weight:700;line-height:1.2;letter-spacing:-.01em;margin:0}
+.step-lead{font-size:1.125rem;font-weight:400;line-height:1.35;color:var(--ink2);margin:0}
+.step-body{display:flex;flex-direction:column;gap:var(--s2);margin:0}
+.step-body p{margin:0;font-size:1rem;line-height:1.6}
+.step-body b{font-weight:700}
+
+/* Inline term definition (signature): dotted-underline accent button */
+.term{
+  font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:help;
+  text-decoration:underline dotted;text-underline-offset:3px;text-decoration-thickness:1.5px;
+}
+.term:hover{color:var(--accent-strong)}
+
+/* Revealed controls */
+.controls{display:flex;flex-direction:column;gap:var(--s4)}
+.controls:empty{display:none}
+.ctrl[hidden]{display:none}
+.ctrl-label{display:block;font-size:.875rem;font-weight:400;color:var(--ink);margin-bottom:var(--s1)}
+.ctrl-row{display:flex;align-items:center;gap:var(--s3);min-height:44px}
+
+/* Slider — 4px groove, accent fill, 16px knob, 44px hit row */
+input[type=range]{
+  -webkit-appearance:none;appearance:none;
+  flex:1;height:44px;background:transparent;cursor:pointer;margin:0;
+  --p:0%;
+}
+input[type=range]::-webkit-slider-runnable-track{
+  height:4px;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p));
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;margin-top:-6px;
+  background:var(--accent);border:1px solid var(--accent-strong);
+  box-shadow:0 0 0 2px var(--paper);
+}
+input[type=range]:hover::-webkit-slider-thumb,
+input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--paper),var(--halo)}
+input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--track)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:999px;background:var(--accent)}
+input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border:1px solid var(--accent-strong);border-radius:50%;
+  background:var(--accent);box-shadow:0 0 0 2px var(--paper)}
+input[type=range]:focus-visible{box-shadow:none}
+input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--paper),var(--halo)}
+
+/* Numeric input / select */
+.num{
+  width:74px;flex:none;padding:var(--s2);text-align:right;
+  font:400 .875rem/1.2 var(--mono);font-variant-numeric:tabular-nums;
+  color:var(--ink);background:var(--paper);
+  border:1px solid var(--border);border-radius:var(--r-xs);
+}
+.unit{font:400 .875rem/1.2 var(--mono);color:var(--ink2)}
+
+/* Inline control feedback — validation + over-slider-range notes. Neutral and
+   plain-spoken, not alarming; the encouraging-tutor voice holds even for errors. */
+.ctrl-note{display:flex;gap:var(--s2);align-items:flex-start;margin-top:var(--s2);font-size:.8125rem;line-height:1.45;color:var(--ink2)}
+.ctrl-note[hidden]{display:none}
+.ctrl-note .ico{flex:none;width:15px;height:15px;margin-top:1px;color:var(--ink2)}
+select{
+  width:100%;min-height:44px;padding:0 var(--s3);
+  font:inherit;color:var(--ink);background:var(--paper);
+  border:1px solid var(--border);border-radius:var(--r-xs);cursor:pointer;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink2) 50%),linear-gradient(135deg,var(--ink2) 50%,transparent 50%);
+  background-position:calc(100% - 18px) center,calc(100% - 13px) center;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+}
+
+/* Quadrant reference table */
+.qt{width:100%;border-collapse:collapse;font:400 .8125rem/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.qt th,.qt td{padding:var(--s1) var(--s2);border:1px solid var(--border);text-align:center}
+.qt th{background:var(--paper);font-weight:700;color:var(--ink2)}
+.qt tr.qa td{color:var(--accent);font-weight:700;background:var(--accent-soft)}
+
+/* Hint callout — full wash, leading icon, never a side stripe */
+.hint{
+  display:flex;gap:var(--s2);align-items:flex-start;
+  background:var(--accent-soft);color:var(--ink);
+  border-radius:var(--r-sm);padding:var(--s3);font-size:.9375rem;line-height:1.5;
+}
+.hint[hidden]{display:none}
+.hint .ico{flex:none;width:18px;height:18px;color:var(--accent)}
+
+/* Buttons */
+.btn{
+  font:inherit;min-height:44px;padding:0 var(--s4);cursor:pointer;
+  border-radius:var(--r-sm);border:1px solid transparent;
+  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
+}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-primary{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.btn-primary:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
+.btn-primary:active:not(:disabled){transform:translateY(1px)}
+.btn-secondary{background:var(--paper);color:var(--ink);border-color:var(--border)}
+.btn-secondary:hover:not(:disabled){background:var(--panel)}
+.btn-ghost{background:transparent;color:var(--ink2);border-color:transparent}
+.btn-ghost:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 6%,transparent)}
+
+/* Step navigation + panel footer */
+.step-nav{display:flex;align-items:center;gap:var(--s2)}
+.step-nav .btn{flex:1}
+.panel-foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:var(--s2)}
+
+/* ─────────────────────────────────────────────────────────────
+   VIEWPORT — loud subject. Canvas sizing is JS-controlled.
+   ───────────────────────────────────────────────────────────── */
+#vp{flex:1 1 0;display:flex;flex-direction:column;min-width:0;background:var(--paper)}
+#canvas-area{flex:1 1 0;position:relative;overflow:hidden;min-height:0}
+#c3d,#c2d{position:absolute;display:block}
+
+#pip-box{
+  position:absolute;top:14px;right:14px;width:255px;height:182px;
+  border:1.5px solid var(--border);border-radius:7px;
+  pointer-events:none;z-index:20;box-shadow:var(--shadow-overlay);
+}
+#pip-lbl{
+  position:absolute;bottom:4px;left:50%;transform:translateX(-50%);
+  font:700 .6875rem/1 var(--font);letter-spacing:.04em;color:var(--ink2);
+  background:color-mix(in srgb,var(--panel) 92%,transparent);
+  border:1px solid var(--border);border-radius:999px;
+  padding:2px 10px;white-space:nowrap;pointer-events:none;
+}
+
+/* One-time orbit hint chip (3D) */
+#orbit-hint{
+  position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
+  display:none;align-items:center;gap:var(--s2);z-index:25;
+  background:var(--paper);border:1px solid var(--border);border-radius:999px;
+  box-shadow:var(--shadow-overlay);padding:var(--s2) var(--s3);
+  font-size:.8125rem;color:var(--ink2);
+}
+#orbit-hint.show{display:inline-flex}
+
+/* Toggle bar (3D / 2D) — accent marks the active pane (chrome guidance) */
+#tbar{flex:0 0 48px;display:flex;align-items:center;justify-content:center;gap:var(--s2);background:var(--panel);border-top:1px solid var(--border)}
+.tb{
+  font:inherit;font-size:.875rem;min-height:36px;padding:0 var(--s5);
+  border:1px solid var(--border);border-radius:999px;
+  background:var(--paper);color:var(--ink2);cursor:pointer;
+}
+.tb:hover{background:var(--panel)}
+.tb.on{background:var(--accent);color:var(--paper);border-color:var(--accent);font-weight:700}
+#tlbl{font-size:.8125rem;color:var(--ink2)}
+
+/* Term popover (signature) — fixed so it escapes the card scroll clip */
+#term-pop{
+  position:fixed;z-index:60;max-width:280px;display:none;
+  background:var(--accent-soft);color:var(--ink);
+  border:1px solid var(--border);border-radius:var(--r-sm);
+  box-shadow:var(--shadow-overlay);
+  padding:var(--s3);font-size:.875rem;line-height:1.45;
+}
+#term-pop.show{display:block}
+#term-pop .pt{font-weight:700;display:block;margin-bottom:2px}
+
+/* Mobile notice */
+#mobile-note{
+  position:fixed;inset:auto 12px 12px 12px;z-index:80;display:none;
+  background:var(--paper);border:1px solid var(--border);border-radius:var(--r-md);
+  box-shadow:var(--shadow-overlay);padding:var(--s3) var(--s4);
+  font-size:.875rem;color:var(--ink);align-items:flex-start;gap:var(--s3);
+}
+#mobile-note button{flex:none}
+
+/* ─────────────────────────────────────────────────────────────
+   MOBILE / NARROW (≤768px) — stack the lesson under a pinned viewport.
+   The 3D/2D view stays at the top of the screen while the step card
+   scrolls beneath it, so adjusting a control never hides the result.
+   Canvas pixel sizing stays JS-owned (layout()); CSS only sets the
+   area's box. The PiP is dropped here — the toggle bar is the switcher.
+   ───────────────────────────────────────────────────────────── */
+@media(max-width:768px){
+  html{height:auto}
+  body{flex-direction:column;height:auto;min-height:100%;overflow:visible}
+
+  /* Flat-Ink rule: the pinned viewport separates from the scrolling lesson by a
+     hairline plus the paper→panel tonal seam, not a shadow (shadows are for
+     transient overlays only). */
+  #vp{
+    order:-1;position:sticky;top:0;z-index:30;flex:none;
+    height:clamp(280px,46vh,440px);
+    border-bottom:1px solid var(--border);
+  }
+  #tbar{flex:0 0 52px}
+  .tb{min-height:44px}
+  #pip-box{display:none}
+
+  #stepper{
+    flex:none;width:100%;height:auto;overflow:visible;
+    border-right:0;padding:var(--s4) var(--s4) var(--s6);gap:var(--s4);
+  }
+
+  #mobile-note{display:flex}
+}
+
+/* Reduced motion: collapse all transitions/animations to instant. */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ════════ STEPPER PANEL ════════ -->
+<aside id="stepper">
+  <p class="brand">Simatrix <span>·</span> Projection of Points</p>
+
+  <ol class="rail" id="rail" aria-label="Lesson steps"></ol>
+
+  <hr class="divider"/>
+
+  <section class="step-card" aria-live="off">
+    <p class="eyebrow" id="eyebrow">Step 1 of 6</p>
+    <h1 class="step-title" id="step-title"></h1>
+    <p class="step-lead" id="step-lead"></p>
+    <div class="step-body" id="step-body"></div>
+
+    <!-- Static control wrappers; main.js shows only those the step needs -->
+    <div class="controls" id="controls">
+      <div class="ctrl" data-ctrl="quad" hidden>
+        <label class="ctrl-label" for="sel-q">Quadrant</label>
+        <select id="sel-q" aria-label="Quadrant">
+          <option value="Q1">I: above HP, in front of VP</option>
+          <option value="Q2">II: above HP, behind VP</option>
+          <option value="Q3">III: below HP, behind VP</option>
+          <option value="Q4">IV: below HP, in front of VP</option>
+        </select>
+        <table class="qt" style="margin-top:var(--s2)">
+          <thead><tr><th>Q</th><th>HP</th><th>VP</th></tr></thead>
+          <tbody>
+            <tr id="qr-Q1"><td>I</td><td>Above</td><td>In front</td></tr>
+            <tr id="qr-Q2"><td>II</td><td>Above</td><td>Behind</td></tr>
+            <tr id="qr-Q3"><td>III</td><td>Below</td><td>Behind</td></tr>
+            <tr id="qr-Q4"><td>IV</td><td>Below</td><td>In front</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="ctrl" data-ctrl="hp" hidden>
+        <label class="ctrl-label" for="r-hp">Distance above HP</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-hp" min="0" max="100" step="1" aria-label="Distance above HP in centimetres"/>
+          <input type="text" class="num" id="n-hp" inputmode="decimal" aria-describedby="note-hp" aria-label="Distance above HP, type a value"/>
+          <span class="unit">cm</span>
+        </div>
+        <small class="ctrl-note" id="note-hp" role="status" hidden></small>
+      </div>
+
+      <div class="ctrl" data-ctrl="vp" hidden>
+        <label class="ctrl-label" for="r-vp">Distance in front of VP</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-vp" min="0" max="100" step="1" aria-label="Distance in front of VP in centimetres"/>
+          <input type="text" class="num" id="n-vp" inputmode="decimal" aria-describedby="note-vp" aria-label="Distance in front of VP, type a value"/>
+          <span class="unit">cm</span>
+        </div>
+        <small class="ctrl-note" id="note-vp" role="status" hidden></small>
+      </div>
+
+      <div class="ctrl" data-ctrl="pp" hidden>
+        <label class="ctrl-label" for="r-pp">Distance from PP (side)</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-pp" min="0" max="100" step="1" aria-label="Distance from Profile Plane in centimetres"/>
+          <input type="text" class="num" id="n-pp" inputmode="decimal" aria-describedby="note-pp" aria-label="Distance from Profile Plane, type a value"/>
+          <span class="unit">cm</span>
+        </div>
+        <small class="ctrl-note" id="note-pp" role="status" hidden></small>
+      </div>
+
+      <div class="ctrl" data-ctrl="anim" hidden>
+        <button id="btn-anim" class="btn btn-primary" style="width:100%">▶ Animate Unfolding</button>
+      </div>
+    </div>
+
+    <div class="hint" id="hint" hidden>
+      <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/>
+      </svg>
+      <span id="hint-text"></span>
+    </div>
+  </section>
+
+  <div class="step-nav">
+    <button id="btn-back" class="btn btn-secondary">← Back</button>
+    <button id="btn-next" class="btn btn-primary">Next →</button>
+  </div>
+
+  <div class="panel-foot">
+    <button id="btn-reset" class="btn btn-ghost">Reset point</button>
+  </div>
+</aside>
+
+<!-- ════════ VIEWPORT ════════ -->
+<div id="vp">
+  <div id="canvas-area">
+    <canvas id="c3d"></canvas>
+    <canvas id="c2d"></canvas>
+    <div id="pip-box"><span id="pip-lbl">2D Drawing</span></div>
+    <div id="orbit-hint">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 8 16 8"/></svg>
+      Drag to rotate the view
+    </div>
+  </div>
+  <div id="tbar">
+    <button id="tb3" class="tb on">3D View</button>
+    <span id="tlbl">3D shown large</span>
+    <button id="tb2" class="tb">2D Drawing</button>
+  </div>
+  <!-- Mirrors the viewport's computed result as text. The 3D/2D scenes are WebGL
+       (unreadable by assistive tech); this is the readable equivalent of where P
+       and its views land, updated on every rebuild. -->
+  <div id="vp-status" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
+</div>
+
+<!-- Inline term popover -->
+<div id="term-pop" role="tooltip"></div>
+
+<!-- Mobile notice -->
+<div id="mobile-note" role="note">
+  <span>The 3D view stays pinned at the top while you scroll through the steps. Tap <b>3D</b> or <b>2D</b> below it to switch what it shows.</span>
+  <button id="mobile-dismiss" class="btn btn-secondary" style="padding:0 var(--s4)">Got it</button>
+</div>
+
+<!-- Live region: announces step changes -->
+<div id="live" class="sr" role="status" aria-live="polite"></div>
+
+<script type="module" src="./main.js"></script>
+</body>
+</html>
