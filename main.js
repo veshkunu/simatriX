@@ -17,6 +17,10 @@ let data = defaultPointData(), mainIs3D = true;
 let S3 = {}, S2 = {}, rafId = null;
 let step = 0, maxReached = 0, orbitDismissed = false, animating = false;
 
+// When true the camera glides to a front-facing view after HP finishes folding.
+// When false the camera stays exactly where the user left it throughout.
+const AUTO_ALIGN_CAMERA = false;
+
 const $ = id => document.getElementById(id);
 const area=$('canvas-area'), c3=$('c3d'), c2=$('c2d');
 const pipBox=$('pip-box'), pipLbl=$('pip-lbl'), live=$('live'), termPop=$('term-pop');
@@ -79,7 +83,7 @@ function layout(){
 
 function loop(){
   rafId=requestAnimationFrame(loop);
-  S3.ctrl.update(); S2.ctrl.update();
+  if(!animating){ S3.ctrl.update(); } S2.ctrl.update();
   S3.rend.render(S3.scene,S3.cam);
   S2.rend.render(S2.scene,S2.cam);
 }
@@ -105,38 +109,50 @@ function fill(s,is3D,wp,wd,raw,v){
 
 // ── 3D scene ──────────────────────────────────────────────────
 // Two-cue rule: everything HP is teal + SOLID; everything VP is amber + DASHED.
+//
+// World axes (engineering-correct — both planes share the X-axis fold line):
+//   HP = XZ plane (y=0)   horizontal floor
+//   VP = XY plane (z=0)   vertical wall, facing +Z toward the viewer
+//   Fold line = X-axis (the TRUE intersection HP ∩ VP)
+//   lateral distRP → X · height distHP → Y · depth distVP → Z (in front of VP = +Z)
+//
+// `p` arrives as world (toW(distVP), toW(distHP), toW(distRP)); we remap it to
+// q = (distRP, distHP, distVP) so distVP becomes the depth axis (+Z). This is
+// what lets HP fold flat onto VP about the X-axis without any camera movement.
 function draw3D(g,p,d,r,v){
   const S=9;
-  apl(g,S,COL.hp,.10,new THREE.Euler(-Math.PI/2,0,0));
+  const q={x:p.z, y:p.y, z:p.x};                               // remap to (lateral, height, depth)
+
+  apl(g,S,COL.hp,.10,new THREE.Euler(-Math.PI/2,0,0));         // HP floor (XZ, y=0)
   alp(g,[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2]],COL.hp);
-  apl(g,S,COL.vp,.07,new THREE.Euler(0,-Math.PI/2,0));
-  alp(g,[[0,-S/2,-S/2],[0,S/2,-S/2],[0,S/2,S/2],[0,-S/2,S/2]],COL.vp);
-  asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);                       // fold line
-  alb(g,'HP',4.2,-.3,.3,COL.hp,.9,.4); alb(g,'VP',.3,4.2,.3,COL.vp,.9,.4);
+  apl(g,S,COL.vp,.07,new THREE.Euler(0,0,0));                  // VP wall  (XY, z=0)
+  alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
+  asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);                       // fold line (X-axis)
+  alb(g,'HP',3.4,-.45,1.1,COL.hp,2.0,.78); alb(g,'VP',-3.1,3.4,.06,COL.vp,2.0,.78);
 
   if(v.showQuad){
-    [{t:'I',x:3.2,y:.3,z:3.2,q:'Q1'},{t:'II',x:-3.2,y:.3,z:3.2,q:'Q2'},
-     {t:'III',x:-3.2,y:-.6,z:3.2,q:'Q3'},{t:'IV',x:3.2,y:-.6,z:3.2,q:'Q4'}]
+    [{t:'I',x:.25,y:2.7,z:2.7,q:'Q1'},{t:'II',x:.25,y:2.7,z:-2.7,q:'Q2'},
+     {t:'III',x:.25,y:-2.7,z:-2.7,q:'Q3'},{t:'IV',x:.25,y:-2.7,z:2.7,q:'Q4'}]
     .forEach(l=>alb(g,l.t,l.x,l.y,l.z,l.q===d.quadrant?COL.ink:COL.bench,.65,.32));
   }
 
   if(!v.showPoint) return;
-  asp(g,p.x,p.y,p.z,.14,COL.ink); alb(g,'P',p.x+.3,p.y+.35,p.z+.2,COL.ink,.55,.28);
+  asp(g,q.x,q.y,q.z,.14,COL.ink); alb(g,'P',q.x+.3,q.y+.35,q.z+.2,COL.ink,.55,.28);
 
   if(v.showHP){
-    asg(g,[p.x,p.y,p.z],[p.x,0,p.z],COL.hp,0);                 // HP projector (solid)
-    asg(g,[p.x,0,p.z],[0,0,p.z],COL.hp,0); asg(g,[0,0,p.z],[0,0,0],COL.hp,0);
-    acr(g,p.x,0,p.z,.14,COL.hp,true); alb(g,'p',p.x+.28,.22,p.z,COL.hp,.55,.28);
+    asg(g,[q.x,q.y,q.z],[q.x,0,q.z],COL.hp,1);                 // HP projector P→foot (dashed)
+    asg(g,[q.x,0,q.z],[q.x,0,0],COL.hp,0);                     // foot→fold line (in HP plane)
+    acr(g,q.x,0,q.z,.14,COL.hp,true); alb(g,'p',q.x+.28,.22,q.z,COL.hp,.55,.28);
   }
   if(v.showVP){
-    asg(g,[p.x,p.y,p.z],[0,p.y,p.z],COL.vp,1);                 // VP projector (dashed)
-    asg(g,[0,p.y,p.z],[0,p.y,0],COL.vp,1);
-    acr(g,0,p.y,p.z,.14,COL.vp,true); alb(g,"p'",0.22,p.y+.28,p.z,COL.vp,.55,.28);
+    asg(g,[q.x,q.y,q.z],[q.x,q.y,0],COL.vp,1);                 // VP projector P→foot (dashed)
+    asg(g,[q.x,q.y,0],[q.x,0,0],COL.vp,1);                     // foot→fold line (in VP plane)
+    acr(g,q.x,q.y,0,.14,COL.vp,true); alb(g,"p'",q.x+.22,q.y+.28,.06,COL.vp,.55,.28);
   }
   if(v.showCoord){
     const s=n=>n<0?'−':'', f=n=>Math.abs(n).toFixed(0);
     alb(g,`P(${s(p.x)}${f(r.distVP)}, ${s(p.y)}${f(r.distHP)}, ${s(p.z)}${f(r.distRP)})`,
-        p.x+.4,p.y+.7,p.z+.3,COL.ink,2.8,.36,true);
+        q.x+.4,q.y+.7,q.z+.3,COL.ink,2.8,.36,true);
   }
 }
 
@@ -147,7 +163,8 @@ function draw2D(g,p,d,r,v){
   const hw=6.5,hh=5.5;
   alp(g,[[-hw,-hh,0],[hw,-hh,0],[hw,hh,0],[-hw,hh,0]],COL.border);
   asg(g,[-hw,0,0],[hw,0,0],COL.ink,0);
-  alb(g,'VP',-hw+.6,.35,0,COL.vp,.55,.26); alb(g,'HP',-hw+.6,-.35,0,COL.hp,.55,.26);
+  alb(g,'x',-hw+.55,.38,0,COL.ink,.85,.72,false,128); alb(g,'y',hw-.55,.38,0,COL.ink,.85,.72,false,128);
+  alb(g,'VP',-hw+1.1,.90,0,COL.vp,1.6,.92,false,128); alb(g,'HP',-hw+1.1,-.90,0,COL.hp,1.6,.92,false,128);
 
   if(!(v.showHP && v.showVP)){
     alb(g,'Top & front views appear here',0,0,0,COL.bench,4.4,.42);
@@ -159,23 +176,39 @@ function draw2D(g,p,d,r,v){
   const planSign=(r.quadrant==='Q2'||r.quadrant==='Q3')?1:-1, py=planSign*d.distVP;  // p  (top view, HP)
 
   asg(g,[lx,ey,0],[lx,0,0],COL.vp,1);                          // VP projector (dashed amber)
-  acr(g,lx,ey,0,.16,COL.vp,false); alb(g,"p'",lx+.32,ey+.28,0,COL.vp,.45,.25);
+  acr(g,lx,ey,0,.18,COL.vp,false); alb(g,"p'",lx+.55,ey+.48,0,COL.vp,1.1,.72,false,128);
   adm(g,lx,0,lx,ey,COL.vp,`${r.distHP.toFixed(0)} cm`);
 
-  asg(g,[lx,0,0],[lx,py,0],COL.hp,0);                          // HP projector (solid teal)
-  acr(g,lx,py,0,.16,COL.hp,false); alb(g,'p',lx+.32,py-.28,0,COL.hp,.45,.25);
+  asg(g,[lx,0,0],[lx,py,0],COL.hp,1);                          // HP projector (dashed teal)
+  acr(g,lx,py,0,.18,COL.hp,false); alb(g,'p',lx+.55,py-.48,0,COL.hp,1.1,.72,false,128);
   adm(g,lx,0,lx,py,COL.hp,`${r.distVP.toFixed(0)} cm`);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// ANIMATION — HP unfolds 90° downward about the X (fold) axis
+// ANIMATION — Engineering-graphics-correct HP unfolding
+//
+// Coordinate system used ONLY inside this animation:
+//   VP  = XY plane  (z = 0)  — front wall, camera-facing
+//   HP  = XZ plane  (y = 0)  — horizontal floor
+//   Fold line = X axis (y=0 ∩ z=0)
+//
+// After HP rotates +90° about the X axis:
+//   every point (x,0,z) on HP maps to (x,−z,0)
+//   → HP lies on the same z=0 plane as VP   ✓ coplanar
+//   → front of HP (z>0) lands below fold line (y<0)   ✓
+//
+// Camera slides from a 3/4 isometric start to a perfectly
+// front-facing end (0,0,18) so the final frame looks exactly
+// like a standard engineering projection sheet:
+//        VP  (above XY line)
+//   ─────── XY ───────
+//        HP  (below XY line)
 // ═══════════════════════════════════════════════════════════════
 function runAnimation(){
   if(animating) return;
 
-  // Reduced motion: skip the swing; reveal the flattened result instead.
   if(reduceMotion.matches){
-    if(mainIs3D) swap();    // show the 2D drawing (the unfolded outcome)
+    if(mainIs3D) swap();
     announce('Planes unfolded. Showing the 2D drawing.');
     return;
   }
@@ -185,59 +218,135 @@ function runAnimation(){
   if(!mainIs3D) swap();
 
   const pos=resolvePosition(data);
-  const wp={x:toW(pos.x),y:toW(pos.y),z:toW(pos.z)};
   const S=9, g=S3.grp;
 
   for(const o of g.children){o.geometry?.dispose();[o.material].flat().forEach(m=>{m?.map?.dispose();m?.dispose();});}
   g.clear();
 
-  // Static (do not rotate): VP, fold line, P, both projectors & p′ foot
-  apl(g,S,COL.vp,.07,new THREE.Euler(0,-Math.PI/2,0));
-  alp(g,[[0,-S/2,-S/2],[0,S/2,-S/2],[0,S/2,S/2],[0,-S/2,S/2]],COL.vp);
-  alb(g,'VP',.3,4.2,.3,COL.vp,.9,.4);
-  asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);
-  asg(g,[0,wp.y,wp.z],[0,wp.y,0],COL.vp,1);
-  acr(g,0,wp.y,wp.z,.14,COL.vp,true); alb(g,"p'",0.22,wp.y+.28,wp.z,COL.vp,.55,.28);
-  asg(g,[wp.x,wp.y,wp.z],[0,wp.y,wp.z],COL.vp,1);              // VP projector (dashed)
-  asp(g,wp.x,wp.y,wp.z,.14,COL.ink); alb(g,'P',wp.x+.3,wp.y+.35,wp.z+.2,COL.ink,.55,.28);
-  asg(g,[wp.x,wp.y,wp.z],[wp.x,0,wp.z],COL.hp,0);             // HP projector stays static (solid)
+  // ── Remap world coords into animation coord system ────────────
+  // main.js world: P = (distVP, distHP, distRP)
+  // animation:     P = (distRP, distHP, distVP)  ← swap x↔z
+  //   ax = lateral  (±distRP)   x-axis
+  //   ay = height   (±distHP)   y-axis  (same sign convention)
+  //   az = depth    (±distVP)   z-axis  (in front of VP at z=0)
+  const ax=toW(pos.z), ay=toW(pos.y), az=toW(pos.x);
 
-  // hpGroup — only the plane, its foot and connectors swing about the fold line
+  // ── VP — XY plane (z=0), stationary ──────────────────────────
+  apl(g,S,COL.vp,.07,new THREE.Euler(0,0,0));             // PlaneGeometry default = XY plane
+  alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
+  alb(g,'VP',-S/2+.6,S/2-.5,.12,COL.vp,2.0,.78);
+
+  // ── Fold line — X axis (y=0, z=0) ────────────────────────────
+  asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);
+
+  // ── Point P — stationary ─────────────────────────────────────
+  asp(g,ax,ay,az,.14,COL.ink);
+  alb(g,'P',ax+.3,ay+.35,az+.2,COL.ink,.55,.28);
+
+  // ── p′ — foot of P on VP (z=0), stationary ───────────────────
+  acr(g,ax,ay,0,.14,COL.vp,false);
+  alb(g,"p'",ax+.22,ay+.28,.12,COL.vp,.55,.28);
+  asg(g,[ax,ay,az],[ax,ay,0],COL.vp,1);    // depth projector P→p′ (dashed amber)
+  asg(g,[ax,ay,0],[ax,0,0],COL.vp,1);      // VP projector p′→fold line (dashed amber)
+
+  // ── hpGroup — rotates +90° about X axis ──────────────────────
   const hpGroup=new THREE.Group(); g.add(hpGroup);
+  hpGroup.rotation.set(0,0,0);
+
+  // HP mesh (XZ plane, horizontal)
   const hpMesh=new THREE.Mesh(
     new THREE.PlaneGeometry(S,S),
-    new THREE.MeshBasicMaterial({color:new THREE.Color(COL.hp),transparent:true,opacity:.10,side:THREE.DoubleSide,depthWrite:false}));
+    new THREE.MeshBasicMaterial({color:new THREE.Color(COL.hp),transparent:true,
+      opacity:.12,side:THREE.DoubleSide,depthWrite:false}));
   hpMesh.rotation.x=-Math.PI/2; hpGroup.add(hpMesh);
-  const bp=[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2],[-S/2,0,-S/2]].map(a=>new THREE.Vector3(...a));
-  hpGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bp),new THREE.LineBasicMaterial({color:new THREE.Color(COL.hp)})));
-  const fr=.14;
-  const fp=[[wp.x-fr,0,wp.z],[wp.x+fr,0,wp.z],[wp.x,0,wp.z-fr],[wp.x,0,wp.z+fr]].map(a=>new THREE.Vector3(...a));
-  hpGroup.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(fp),new THREE.LineBasicMaterial({color:new THREE.Color(COL.hp)})));
-  const cp=[[wp.x,0,wp.z],[0,0,wp.z],[0,0,0]].map(a=>new THREE.Vector3(...a));
-  hpGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(cp),new THREE.LineBasicMaterial({color:new THREE.Color(COL.hp)})));
-  alb(g,'HP',4.2,-.3,.3,COL.hp,.9,.4);
-  hpGroup.position.set(0,0,0); hpGroup.rotation.set(0,0,0);
 
-  const camStart=S3.cam.position.clone(), camEnd=new THREE.Vector3(0,0,14);
-  const tgtStart=S3.ctrl.target.clone(), tgtEnd=new THREE.Vector3(0,0,0);
-  const DURATION=2500, startTime=performance.now(), targetAngle=Math.PI/2;
+  // HP border
+  const bp=[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2],[-S/2,0,-S/2]]
+    .map(([x,y,z])=>new THREE.Vector3(x,y,z));
+  hpGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(bp),
+    new THREE.LineBasicMaterial({color:new THREE.Color(COL.hp)})));
+
+  // HP label — rotates with HP so it stays on the plane surface
+  alb(hpGroup,'HP',S/2-.6,-.3,S/2-.5,COL.hp,2.0,.78);
+
+  // p — foot of P on HP, at (ax, 0, az) in hpGroup local coords
+  asp(hpGroup,ax,0,az,.14,COL.hp);
+  acr(hpGroup,ax,0,az,.14,COL.hp,true);
+  alb(hpGroup,'p',ax+.28,.22,az,COL.hp,.55,.28);
+
+  // Connectors on HP surface: p → fold line (dashed teal, matches draw2D style)
+  asg(hpGroup,[ax,0,az],[ax,0,0],COL.hp,1);
+  if(Math.abs(ax)>0.01) asg(hpGroup,[ax,0,0],[0,0,0],COL.hp,1);
+
+  // ── Dynamic HP projector (P → moving foot, updated per frame) ─
+  const projGeo=new THREE.BufferGeometry()
+    .setFromPoints([new THREE.Vector3(ax,ay,az),new THREE.Vector3(ax,0,az)]);
+  const projMat=new THREE.LineDashedMaterial({color:new THREE.Color(COL.hp),dashSize:.18,gapSize:.10});
+  const dynProj=new THREE.Line(projGeo,projMat);
+  dynProj.computeLineDistances(); g.add(dynProj);
+
+  // Invisible tracker anchored to foot position inside hpGroup
+  const footTracker=new THREE.Object3D();
+  footTracker.position.set(ax,0,az);
+  hpGroup.add(footTracker);
+
+  // ── Camera ────────────────────────────────────────────────────
+  // Save user's view so it can be restored when animation ends.
+  const origCamPos = S3.cam.position.clone();
+  const origCamTgt = S3.ctrl.target.clone();
+
+  // Fixed educational position: VP face-on (z=0 plane), HP visible from above.
+  // Camera never moves from here during the fold — no orbit, pan, zoom, or tilt.
+  const fixedCamPos = new THREE.Vector3(0, 4.5, 13);
+  const fixedCamTgt = new THREE.Vector3(0, 0.5, 0);
+  S3.cam.position.copy(fixedCamPos);
+  S3.ctrl.target.copy(fixedCamTgt);
+  S3.cam.lookAt(fixedCamTgt);
+
+  // AUTO_ALIGN_CAMERA=true: after fold, camera glides to a dead-front sheet view.
+  // AUTO_ALIGN_CAMERA=false: camera is completely still for the entire animation.
+  const camEnd = new THREE.Vector3(0, 0, 18);
+  const tgtEnd = new THREE.Vector3(0, 0, 0);
+
+  // Fixed camera: fold over 80 % of duration, hold final frame for 20 %.
+  // Auto-align:   fold 65 % → camera slide 35 %.
+  const DURATION = AUTO_ALIGN_CAMERA ? 2800 : 2500;
+  const startTime=performance.now(), targetAngle=Math.PI/2;
+  const tmpV=new THREE.Vector3();
 
   function animStep(now){
+    // Keep HP projector pointing at the foot's current world position
+    footTracker.getWorldPosition(tmpV);
+    projGeo.setFromPoints([new THREE.Vector3(ax,ay,az), tmpV.clone()]);
+    dynProj.computeLineDistances();
+
     const t=Math.min((now-startTime)/DURATION,1);
-    const eased=1-Math.pow(1-t,3);
-    if(t<0.65){
-      hpGroup.rotation.x=targetAngle*(eased/0.65);
-    }else{
+
+    if(!AUTO_ALIGN_CAMERA){
+      // Camera is completely fixed — fold uses 80 % of duration, rest is a hold.
+      const foldT=Math.min(t/0.8,1), ease=1-Math.pow(1-foldT,3);
+      hpGroup.rotation.x=targetAngle*ease;
+      // No camera code here — the camera position set above is never touched.
+    } else if(t<0.65){
+      // Phase 1: HP folds 90° clockwise about the fold line
+      const sub=t/0.65, ease=1-Math.pow(1-sub,3);
+      hpGroup.rotation.x=targetAngle*ease;
+    } else {
       hpGroup.rotation.x=targetAngle;
-      const phase=(eased-0.65)/0.35;
-      S3.cam.position.lerpVectors(camStart,camEnd,phase);
-      S3.ctrl.target.lerpVectors(tgtStart,tgtEnd,phase);
-      S3.ctrl.update();
+      // Phase 2: camera glides from fixed position to dead-front sheet view
+      const sub=(t-0.65)/0.35, ease=1-Math.pow(1-sub,3);
+      S3.cam.position.lerpVectors(fixedCamPos,camEnd,ease);
+      S3.cam.lookAt(tgtEnd);
     }
+
     if(t<1){ requestAnimationFrame(animStep); }
-    else{
+    else {
       animating=false; btn.disabled=false; btn.textContent='▶ Animate Unfolding';
-      S3.cam.position.copy(CAM3.p); S3.ctrl.target.copy(CAM3.t); S3.ctrl.update();
+      // Always restore the user's original camera so the 3D scene looks correct.
+      S3.cam.position.copy(origCamPos);
+      S3.ctrl.target.copy(origCamTgt);
+      S3.ctrl.update();
       const p2=resolvePosition(data);
       const wp2={x:toW(p2.x),y:toW(p2.y),z:toW(p2.z)};
       const wd2={distHP:toW(data.distHP),distVP:toW(data.distVP),distRP:toW(data.distRP),quadrant:data.quadrant};
@@ -260,24 +369,26 @@ function adm(g,x1,y1,x2,y2,c,txt){
   asg(g,[x1-0.25,y1,0],[ox-0.02,y1,0],c,0);
   asg(g,[x2-0.25,y2,0],[ox-0.02,y2,0],c,0);
   function arrow(tipX,tipY,up){
-    const h=0.2,w=0.08,d=up?1:-1,shape=new THREE.Shape();
+    const h=0.26,w=0.11,d=up?1:-1,shape=new THREE.Shape();
     shape.moveTo(tipX,tipY); shape.lineTo(tipX-w,tipY-d*h); shape.lineTo(tipX+w,tipY-d*h); shape.closePath();
     const m=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide,depthTest:false}));
     m.renderOrder=1; g.add(m);
   }
   arrow(ox,y1,y2<y1); arrow(ox,y2,y2>y1);
-  alb(g,txt,ox-0.65,(y1+y2)/2,0,c,1.0,0.30,true);
+  alb(g,txt,ox-0.9,(y1+y2)/2,0,c,2.0,0.68,true,256);
 }
-function alb(g,txt,x,y,z,c,sx=.7,sy=.35,mono=false){
-  const cv=document.createElement('canvas'); cv.width=512; cv.height=128;
-  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,512,128);
+// cw: canvas pixel width — use 128 for 1-3 char labels, 256 for short words, 512 for long strings.
+// Narrower cw means the text occupies more of the texture, yielding sharper sprites at the same world-unit scale.
+function alb(g,txt,x,y,z,c,sx=.7,sy=.35,mono=false,cw=512){
+  const cv=document.createElement('canvas'); cv.width=cw; cv.height=128;
+  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,cw,128);
   const wt=mono?'500':'bold', base=mono?40:44,
         fam=mono?'"IBM Plex Mono",ui-monospace,monospace':'"Atkinson Hyperlegible",system-ui,sans-serif';
   ctx.font=`${wt} ${base}px ${fam}`;
-  // Shrink to fit so a long negative coordinate (e.g. P(−200, −200, −200)) can't clip the sprite.
-  const maxW=512-24, w=ctx.measureText(txt).width;
+  // Shrink to fit so long text can't clip the sprite.
+  const maxW=cw-24, w=ctx.measureText(txt).width;
   if(w>maxW) ctx.font=`${wt} ${Math.floor(base*maxW/w)}px ${fam}`;
-  ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,256,64);
+  ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,cw/2,64);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));
   sp.position.set(x,y,z); sp.scale.set(sx,sy,1); g.add(sp);
 }
