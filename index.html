@@ -109,6 +109,13 @@ body{
 }
 .brand span{color:var(--accent)}
 
+/* Chapter switcher — links the two modules (same pill language as the toggle bar) */
+.chapnav{display:flex;gap:var(--s1)}
+.chap{font:600 .8125rem/1 var(--font);color:var(--ink2);text-decoration:none;padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--paper)}
+.chap:hover{background:var(--panel)}
+.chap.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+.chap:focus-visible{box-shadow:var(--halo)}
+
 /* Step rail (signature) */
 .rail{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s1)}
 .rail-item{
@@ -348,6 +355,11 @@ select{
 <!-- ════════ STEPPER PANEL ════════ -->
 <aside id="stepper">
   <p class="brand">Simatrix <span>·</span> Projection of Points</p>
+
+  <nav class="chapnav" aria-label="Chapters">
+    <a href="./index.html" class="chap on" aria-current="page">Points</a>
+    <a href="./lines.html" class="chap">Lines</a>
+  </nav>
 
   <ol class="rail" id="rail" aria-label="Lesson steps"></ol>
 
