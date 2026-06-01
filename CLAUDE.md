@@ -189,19 +189,29 @@ input accepts up to 200 cm.
 ### 3D scene conventions (right-handed, Y-up — Three.js default)
 
 ```
-HP = XZ plane at Y = 0   (flat blue plane)
-VP = YZ plane at X = 0   (upright orange plane)
-Fold line = X axis (HP ∩ VP intersection)
+HP = XZ plane at Y = 0   (flat teal plane, horizontal floor)
+VP = XY plane at Z = 0   (upright amber plane, facing +Z toward viewer)
+Fold line = X axis (the TRUE HP ∩ VP intersection)
 ```
 
-**Sign table for resolvePosition():**
+Both planes share the X-axis, so HP can fold flat onto VP about that exact
+line (see the unfolding animation). `draw3D` **remaps** the resolved position
+to world axes — `q = (lateral distRP → X, height distHP → Y, depth distVP → Z)`
+— so distVP becomes the depth axis (+Z = in front of VP). `resolvePosition()`
+itself is unchanged; only `draw3D`/`runAnimation` interpret its output via `q`.
 
-| Quadrant | X (distVP) | Y (distHP) | Z (distRP) |
+**Sign table for resolvePosition()** (returns raw signed cm — `pointData.js`
+is unchanged; the remap to world axes happens in `draw3D`):
+
+| Quadrant | x = ±distVP | y = ±distHP | z = ±distRP |
 |---|---|---|---|
 | Q1 — Above HP, In front of VP | +distVP | +distHP | +distRP |
 | Q2 — Above HP, Behind VP      | −distVP | +distHP | +distRP |
 | Q3 — Below HP, Behind VP      | −distVP | −distHP | +distRP |
 | Q4 — Below HP, In front of VP | +distVP | −distHP | +distRP |
+
+In `draw3D` these map to world as `q.x = z (distRP)`, `q.y = y (distHP)`,
+`q.z = x (distVP)` — so "in front of VP" is +Z (toward the camera).
 
 ### 2D drawing conventions (after HP unfolds 90° about the X fold line)
 
@@ -255,22 +265,38 @@ viewport.
 ## HP unfolding animation
 
 Triggered by the **▶ Animate Unfolding** button. Runs only in the 3D scene (S3).
+`runAnimation()` rebuilds the scene in the SAME world axes as `draw3D` so the
+first animation frame is pixel-identical to the static scene — **no jump.**
 
 **What happens:**
-1. A `THREE.Group` (`hpGroup`) is built containing the HP plane mesh, border, foot
-   markers, and connectors.
-2. `hpGroup.rotation.x` is animated from `0` to `+Math.PI/2` (90°) over ~1.6s using
-   ease-out cubic. This rotates HP about the X-axis (fold line), swinging the plane
-   downward and forward to land in front of VP — exactly the textbook unfolding.
-3. Camera then lerps to a front-on position (`z=14`) to show the final 2D layout.
-4. After completion, the scene is rebuilt normally and camera resets to `CAM3`.
+1. The scene is rebuilt: VP (XY plane, z=0), fold line, point P, and `p′` + its
+   VP-side construction are **static**. A `THREE.Group` (`hpGroup`) holds the HP
+   plane mesh, border, HP label, `p` foot/cross/label, and the `p → fold line`
+   connector — everything that must rotate rigidly with HP.
+2. `hpGroup.rotation.x` eases `0 → +Math.PI/2` (90°) about the X-axis (the hinge).
+   Because both planes share the X-axis, HP lands **coplanar** with VP in the z=0
+   plane: `p` swings to below the XY line, `p′` stays above — the textbook sheet.
+3. **The camera NEVER moves** (this is a hard product requirement — see
+   [[feedback-animation-no-camera-movement]]). The fold plays out entirely within
+   the user's current viewpoint. `AUTO_ALIGN_CAMERA` (default `false`, top of
+   main.js) optionally adds a post-fold head-on glide; leave it off.
+4. The 3D **depth cues** (point P, its label, and the two *perpendicular*
+   projectors `P→p` and `P→p′`) fade to opacity 0 over the last ~28 % of the
+   timeline, leaving a clean 2D sheet. The `p′→fold` and `p→fold` connectors stay
+   (they lie in the sheet plane and form the vertical projector through the XY line).
+5. **Final frame is frozen** — no camera reset, no rebuild to 3D, no loop. The
+   folded sheet stays on screen until the user changes a control (which triggers a
+   normal `rebuild()` back to the 3D scene).
 
-**The HP projector (vertical dashed line from P to HP) is drawn statically** outside
-`hpGroup` — it does not rotate with the plane. This is intentional: the projector
-represents the perpendicular distance, which is fixed regardless of plane orientation.
+**The HP projector `P → foot` is dynamic:** a `footTracker` Object3D rides inside
+`hpGroup`, and each frame the projector is redrawn from the static P to the foot's
+current world position, so it tracks the moving foot during the fold. It is one of
+the depth cues that fades out at the end.
 
 `animating` flag is set `true` during animation. `rebuild()` returns early if
-`animating === true`. The button is disabled during animation.
+`animating === true`; `loop()` skips `S3.ctrl.update()` while animating so
+OrbitControls damping can't fight the (now stationary) camera. Button disabled
+during animation.
 
 ---
 
@@ -320,6 +346,10 @@ like `P(50, 36, 0)`.
 | Arrowheads wrong direction | `pointingUp` flag inverted | Arrow at y1 points toward y2; arrow at y2 points toward y1 |
 | `distHP` moves wrong line in 2D | Variables swapped | `distHP` → `ey` (p' on VP); `distVP` → `py` (p on HP) |
 | Animation rotates wrong way | Wrong sign on `hpGroup.rotation.x` | Use `+Math.PI/2` (positive X rotation swings HP forward/down) |
+| Scene "jumps" when Animate is clicked | `runAnimation` built the scene in a different coord system than `draw3D` | Both must use VP=XY(z=0), HP=XZ(y=0); animation frame-1 must equal `draw3D` |
+| Camera teleports/flies on Animate | Animation set/lerped `S3.cam` | Never touch `S3.cam`/`S3.ctrl` in `runAnimation` (`AUTO_ALIGN_CAMERA=false`) |
+| Fold ends perpendicular, not flat | Planes didn't share the hinge line | VP must lie in the plane HP rotates *into* (z=0); they share the X-axis |
+| Final frame still shows floating P + diagonal projectors | Depth cues not hidden | Fade `fade[]` (P, P label, `P→p`, `P→p′`) to opacity 0 over the last ~28 % |
 
 ---
 
