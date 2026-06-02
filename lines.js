@@ -4,6 +4,9 @@
 // stepper, term popovers, geometry helpers, and the no-camera HP-fold animation.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { defaultLineData, resolveLine, LineCase } from './src/lineData.js';
 import { STEPS, TERMS, STEP_COUNT } from './src/lineSteps.js';
 
@@ -19,6 +22,17 @@ const MOBILE_Q = matchMedia('(max-width: 768px)');
 let data = defaultLineData(), mainIs3D = true;
 let S3 = {}, S2 = {}, rafId = null;
 let step = 0, maxReached = 0, orbitDismissed = false, animating = false;
+// folded === true once the orthographic sheet is laid flat (frozen). The fold
+// button then reverses the animation, folding the sheet back up into 3D.
+let folded = false;
+let MAX_ANISO = 1;
+
+// Fat-line (Line2) plumbing: every Line2 needs its LineMaterial.resolution kept
+// in sync with the pixel size of the canvas it is drawn on. fill()/runFold set
+// curMats to the active scene's material list so helpers can register, and
+// layout() refreshes every material's resolution on resize / view swap.
+let curMats = null;
+const curRes = new THREE.Vector2(1, 1);
 
 // Viewport toggles (Labels / Dimensions / Projectors) — default all on.
 let tLabels = true, tDims = true, tProj = true;
@@ -49,12 +63,26 @@ function build(canvas, is3D){
   ctrl.target.copy(pr.t); ctrl.enableDamping=true; ctrl.dampingFactor=0.08;
   ctrl.enableRotate=is3D; ctrl.update();
   const grp=new THREE.Group(); scene.add(grp);
-  return {scene,cam,rend,ctrl,grp};
+  return {scene,cam,rend,ctrl,grp,lineMats:[]};
+}
+
+// Pixel size (CSS px) of the canvas a scene currently occupies — main pane or
+// PiP. LineMaterial.resolution must match this for correct on-screen thickness.
+function sizeOf(is3D){
+  const isMain = (is3D===mainIs3D);
+  if(isMain || MOBILE_Q.matches) return [area.clientWidth||1, area.clientHeight||1];
+  return [PIP_W, PIP_H];
+}
+function updateLineRes(){
+  const a=sizeOf(true), b=sizeOf(false);
+  S3.lineMats?.forEach(m=>m.resolution.set(a[0],a[1]));
+  S2.lineMats?.forEach(m=>m.resolution.set(b[0],b[1]));
 }
 
 function layout(){
   const Wd=area.clientWidth, H=area.clientHeight;
   if(!Wd||!H) return;
+  updateLineRes();
   const mainC=mainIs3D?c3:c2, pipC=mainIs3D?c2:c3;
   const mainS=mainIs3D?S3:S2, pipS=mainIs3D?S2:S3;
   mainC.style.cssText=`left:0;top:0;z-index:1;cursor:default;position:absolute;display:block;`;
@@ -78,6 +106,9 @@ function loop(){
 function rebuild(d){
   data=d;
   if(animating) return;
+  // A normal rebuild always redraws the live, interactive 3D scene, so we are no
+  // longer showing a flattened sheet — clear the fold state and reset the button.
+  if(folded){ folded=false; resetFoldButton(); }
   const v=viewFor(step);
   const M=resolveLine(d);
   fill(S3,true,M,v); fill(S2,false,M,v);
@@ -88,6 +119,8 @@ function fill(s,is3D,M,v){
   const g=s.grp;
   g.traverse(o=>{if(o!==g){o.geometry?.dispose();[o.material].flat().forEach(m=>{m?.map?.dispose();m?.dispose();});}});
   g.clear();
+  curMats=s.lineMats; curMats.length=0;
+  const [rw,rh]=sizeOf(is3D); curRes.set(rw,rh);
   is3D ? draw3D(g,M,v) : draw2D(g,M,v);
 }
 
@@ -130,21 +163,21 @@ function draw3D(g,M,v){
   if(v.showFV){
     fvTrue ? asgBold(g,aF,bF,COL.vp) : asg(g,aF,bF,COL.vp,0);
     acr(g,aF[0],aF[1],0,.13,COL.vp,false); acr(g,bF[0],bF[1],0,.13,COL.vp,false);
-    if(tLabels){ alb(g,"a'",aF[0]-.32,aF[1]+.32,.05,COL.vp,.62,.32); alb(g,"b'",bF[0]+.32,bF[1]+.32,.05,COL.vp,.62,.32); }
+    if(tLabels){ albBox(g,"a'",aF[0]-.32,aF[1]+.34,.05,COL.vp,.34); albBox(g,"b'",bF[0]+.32,bF[1]+.34,.05,COL.vp,.34); }
   }
   // Top view ab on HP — darkened/bold when it equals the true length
   if(v.showTV){
     tvTrue ? asgBold(g,aT,bT,COL.hp) : asg(g,aT,bT,COL.hp,0);
     acr(g,aT[0],0,aT[2],.13,COL.hp,true); acr(g,bT[0],0,bT[2],.13,COL.hp,true);
-    if(tLabels){ alb(g,'a',aT[0]-.32,.18,aT[2],COL.hp,.56,.3); alb(g,'b',bT[0]+.32,.18,bT[2],COL.hp,.56,.3); }
+    if(tLabels){ albBox(g,'a',aT[0]-.32,.2,aT[2],COL.hp,.32); albBox(g,'b',bT[0]+.32,.2,bT[2],COL.hp,.32); }
   }
 
   // The true line AB in space — always the True Length, so always drawn dark + bold
   asgBold(g,A,B,COL.ink);
   asp(g,A[0],A[1],A[2],.15,COL.ink); asp(g,B[0],B[1],B[2],.15,COL.ink);
   if(tLabels){
-    alb(g,'A',A[0]-.32,A[1]+.34,A[2]+.15,COL.ink,.56,.3);
-    alb(g,'B',B[0]+.32,B[1]+.34,B[2]+.15,COL.ink,.56,.3);
+    albBox(g,'A',A[0]-.32,A[1]+.36,A[2]+.15,COL.ink,.34);
+    albBox(g,'B',B[0]+.32,B[1]+.36,B[2]+.15,COL.ink,.34);
   }
   if(tDims){
     const mid=[(A[0]+B[0])/2,(A[1]+B[1])/2+.35,(A[2]+B[2])/2];
@@ -214,10 +247,10 @@ function draw2D(g,M,v){
 
   // Names: elevation is PRIMED (a'b'), plan is UNPRIMED (ab); plus a clear caption
   if(tLabels){
-    if(fvPoint){ alb(g,"a'b'",A1[0]+.55,A1[1]+.45,0,COL.vp,1.15,.44); }
-    else { alb(g,"a'",A1[0]-.42,A1[1]+.42,0,COL.vp,.9,.44); alb(g,"b'",B1[0]+.42,B1[1]+.42,0,COL.vp,.9,.44); }
-    if(tvPoint){ alb(g,'ab',A2[0]+.55,A2[1]-.45,0,COL.hp,1.0,.44); }
-    else { alb(g,'a',A2[0]-.42,A2[1]-.42,0,COL.hp,.9,.44); alb(g,'b',B2[0]+.42,B2[1]-.42,0,COL.hp,.9,.44); }
+    if(fvPoint){ albBox(g,"a'b'",A1[0]+.58,A1[1]+.48,0,COL.vp,.40); }
+    else { albBox(g,"a'",A1[0]-.45,A1[1]+.45,0,COL.vp,.38); albBox(g,"b'",B1[0]+.45,B1[1]+.45,0,COL.vp,.38); }
+    if(tvPoint){ albBox(g,'ab',A2[0]+.58,A2[1]-.48,0,COL.hp,.40); }
+    else { albBox(g,'a',A2[0]-.45,A2[1]-.45,0,COL.hp,.38); albBox(g,'b',B2[0]+.45,B2[1]-.45,0,COL.hp,.38); }
     alb(g,'ELEVATION (a′b′)',-HW+2.0,HH-.35,0,COL.vp,3.0,.5,false,256);
     alb(g,'PLAN (ab)',-HW+1.4,-HH+.35,0,COL.hp,2.1,.5,false,256);
   }
@@ -245,31 +278,69 @@ function draw2D(g,M,v){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// FOLD ANIMATION — identical mechanics to the Points module: only the
-// HP group rotates +90° about the X-axis; the camera never moves; the
-// 3D depth cues dissolve to leave a clean orthographic sheet, frozen.
+// FOLD ANIMATION — REVERSIBLE. Only the HP group rotates about the X-axis;
+// the camera never moves. Forward (flatten) swings HP +90° and dissolves the
+// 3D depth cues to leave a clean orthographic sheet. Reverse (fold back) plays
+// the exact same timeline backwards: HP swings home and the depth cues return,
+// ending in the live 3D scene. The button toggles between the two.
 // ═══════════════════════════════════════════════════════════════
+const FOLD_LABEL   = '▶ Generate Orthographic Projection';
+const UNFOLD_LABEL = '↩ Fold back to 3D';
+const FOLD_DURATION = 2800, FOLD_SPLIT = 0.72, FOLD_ANGLE = Math.PI/2;
+
+function resetFoldButton(){ const b=$('btn-fold'); if(b){ b.disabled=false; b.textContent=FOLD_LABEL; } }
+
+// The forward (flatten) state at normalised progress p ∈ [0,1]: HP rotation and
+// the shared opacity of the fading depth cues. Reverse simply evaluates this at
+// (1 − t), so the two directions are exact mirror images.
+function foldStateAt(p){
+  const foldT=Math.min(p/FOLD_SPLIT,1), ease=1-Math.pow(1-foldT,3);
+  const op = p<=FOLD_SPLIT ? 1 : Math.max(0,1-(p-FOLD_SPLIT)/(1-FOLD_SPLIT));
+  return { rot: FOLD_ANGLE*ease, op };
+}
+
 function runFold(){
   if(animating) return;
-  if(reduceMotion.matches){ if(mainIs3D) swap(); announce('Views unfolded. Showing the 2D drawing.'); return; }
-
   const v=viewFor(step);
   if(!(v.showFV && v.showTV)) return;     // nothing to fold yet
+  folded ? foldBackTo3D() : flattenTo2D();
+}
 
-  animating=true;
-  const btn=$('btn-fold'); btn.disabled=true; btn.textContent='Generating…';
-  if(!mainIs3D) swap();
+function flattenTo2D(){
+  if(reduceMotion.matches){
+    if(mainIs3D) swap();
+    folded=true; $('btn-fold').textContent=UNFOLD_LABEL;
+    announce('Views unfolded. Showing the 2D drawing.');
+    return;
+  }
+  animateFold(false);
+}
+function foldBackTo3D(){
+  if(reduceMotion.matches){
+    if(!mainIs3D) swap();
+    rebuild(data);            // rebuild clears `folded` and resets the button
+    announce('Folded back into the 3D view.');
+    return;
+  }
+  animateFold(true);
+}
 
+// Build the fold scene (static VP + front view, the rotating hpGroup with the top
+// view, and the dynamic HP projectors). Returns the rotating group, the fading
+// cue list, and the projector trackers. Mirrors draw3D's coordinate system so the
+// transition is seamless in either direction.
+function buildFoldScene(){
   const M=resolveLine(data);
   const S=9, g=S3.grp;
   g.traverse(o=>{if(o!==g){o.geometry?.dispose();[o.material].flat().forEach(m=>{m?.map?.dispose();m?.dispose();});}});
   g.clear();
+  curMats=S3.lineMats; curMats.length=0;
+  const [rw,rh]=sizeOf(true); curRes.set(rw,rh);
 
   const cx=(M.A.x+M.B.x)/2;
   const ax=W(M.A.x-cx), bx=W(M.B.x-cx);
   const A=[ax,W(M.A.y),W(M.A.z)], B=[bx,W(M.B.y),W(M.B.z)];
   const aF=[ax,W(M.A.y),0], bF=[bx,W(M.B.y),0];
-
   const last=()=>g.children[g.children.length-1];
   const fade=[];
 
@@ -283,30 +354,29 @@ function runFold(){
   asg(g,aF,bF,COL.vp,0);
   asg(g,aF,[ax,0,0],COL.vp,1); asg(g,bF,[bx,0,0],COL.vp,1);
   acr(g,aF[0],aF[1],0,.16,COL.vp,false); acr(g,bF[0],bF[1],0,.16,COL.vp,false);
-  alb(g,"a'",aF[0]-.34,aF[1]+.34,.05,COL.vp,.6,.3); alb(g,"b'",bF[0]+.34,bF[1]+.34,.05,COL.vp,.6,.3);
+  albBox(g,"a'",aF[0]-.34,aF[1]+.36,.05,COL.vp,.32); albBox(g,"b'",bF[0]+.34,bF[1]+.36,.05,COL.vp,.32);
 
   // Depth cues (FADE): the true line AB, endpoints, and the VP perpendicular projectors
-  asg(g,A,B,COL.ink,0); fade.push(last());
+  asgBold(g,A,B,COL.ink); fade.push(last());
   asp(g,A[0],A[1],A[2],.15,COL.ink); fade.push(last());
   asp(g,B[0],B[1],B[2],.15,COL.ink); fade.push(last());
-  alb(g,'A',A[0]-.32,A[1]+.34,A[2]+.15,COL.ink,.5,.26); fade.push(last());
-  alb(g,'B',B[0]+.32,B[1]+.34,B[2]+.15,COL.ink,.5,.26); fade.push(last());
+  albBox(g,'A',A[0]-.32,A[1]+.36,A[2]+.15,COL.ink,.3); fade.push(last());
+  albBox(g,'B',B[0]+.32,B[1]+.36,B[2]+.15,COL.ink,.3); fade.push(last());
   asg(g,A,aF,COL.vp,1); fade.push(last());
   asg(g,B,bF,COL.vp,1); fade.push(last());
 
-  // hpGroup (rotates +90° about X): HP plane + top view ab + connectors to XY
+  // hpGroup (rotates about X): HP plane + top view ab + connectors to XY
   const hpGroup=new THREE.Group(); g.add(hpGroup); hpGroup.rotation.set(0,0,0);
   const hpMesh=new THREE.Mesh(new THREE.PlaneGeometry(S,S),
     new THREE.MeshBasicMaterial({color:new THREE.Color(COL.hp),transparent:true,opacity:.10,side:THREE.DoubleSide,depthWrite:false}));
   hpMesh.rotation.x=-Math.PI/2; hpGroup.add(hpMesh);
-  const bp=[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2],[-S/2,0,-S/2]].map(a=>new THREE.Vector3(...a));
-  hpGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(bp),new THREE.LineBasicMaterial({color:new THREE.Color(COL.hp)})));
+  alp(hpGroup,[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2]],COL.hp);
   alb(hpGroup,'HP',3.4,-.45,1.1,COL.hp,2.0,.78);
   const aT=[ax,0,W(M.A.z)], bT=[bx,0,W(M.B.z)];
   asg(hpGroup,aT,bT,COL.hp,0);
   asg(hpGroup,aT,[ax,0,0],COL.hp,0); asg(hpGroup,bT,[bx,0,0],COL.hp,0);
   acr(hpGroup,aT[0],0,aT[2],.16,COL.hp,true); acr(hpGroup,bT[0],0,bT[2],.16,COL.hp,true);
-  alb(hpGroup,'a',aT[0]-.34,.18,aT[2],COL.hp,.6,.3); alb(hpGroup,'b',bT[0]+.34,.18,bT[2],COL.hp,.6,.3);
+  albBox(hpGroup,'a',aT[0]-.34,.2,aT[2],COL.hp,.3); albBox(hpGroup,'b',bT[0]+.34,.2,bT[2],COL.hp,.3);
 
   // Dynamic HP perpendicular projectors (P→moving foot) — FADE
   const trackers=[{from:A,foot:aT},{from:B,foot:bT}].map(({from,foot})=>{
@@ -318,46 +388,131 @@ function runFold(){
   });
 
   for(const o of fade){ if(o.material) o.material.transparent=true; }
+  return { hpGroup, fade, trackers };
+}
 
-  const DURATION=2800, FOLD=0.72, startTime=performance.now(), targetAngle=Math.PI/2;
+function animateFold(reverse){
+  animating=true;
+  const btn=$('btn-fold'); btn.disabled=true; btn.textContent = reverse ? 'Folding…' : 'Generating…';
+  if(!mainIs3D) swap();
+
+  const g=S3.grp;
+  const { hpGroup, fade, trackers } = buildFoldScene();
   const tmp=new THREE.Vector3();
 
-  function animStep(now){
+  // Apply a given timeline state to the scene (rotation, fade, projector geometry).
+  const apply=p=>{
+    const { rot, op }=foldStateAt(p);
+    hpGroup.rotation.x=rot;
+    for(const o of fade){ if(o.material) o.material.opacity=op; }
     for(const tr of trackers){ tr.t.getWorldPosition(tmp); tr.geo.setFromPoints([new THREE.Vector3(...tr.from),tmp.clone()]); }
     g.children.forEach(o=>{ if(o.isLine && o.material?.isLineDashedMaterial) o.computeLineDistances(); });
+  };
 
-    const t=Math.min((now-startTime)/DURATION,1);
-    const foldT=Math.min(t/FOLD,1), ease=1-Math.pow(1-foldT,3);
-    hpGroup.rotation.x=targetAngle*ease;
-    const fa = t<=FOLD ? 1 : Math.max(0,1-(t-FOLD)/(1-FOLD));
-    for(const o of fade){ if(o.material) o.material.opacity=fa; }
+  apply(reverse ? 1 : 0);          // freeze the correct first frame (no flash / no jump)
+  const startTime=performance.now();
 
-    if(t<1){ requestAnimationFrame(animStep); }
-    else {
-      animating=false; btn.disabled=false; btn.textContent='▶ Generate Orthographic Projection';
+  function frame(now){
+    const t=Math.min((now-startTime)/FOLD_DURATION,1);
+    apply(reverse ? 1-t : t);
+    if(t<1){ requestAnimationFrame(frame); return; }
+
+    if(reverse){
+      animating=false; folded=false;
+      rebuild(data);               // restore the live, interactive 3D scene
+      resetFoldButton();
+      announce('Folded back into the 3D view — the line is restored in space.');
+    } else {
+      animating=false; folded=true;
+      btn.disabled=false; btn.textContent=UNFOLD_LABEL;
       announce('Top view unfolded onto the vertical plane — the orthographic projection is complete.');
     }
   }
-  requestAnimationFrame(animStep);
+  requestAnimationFrame(frame);
 }
 
-// ── Geometry helpers (identical to the Points module) ─────────
+// ── Geometry helpers ──────────────────────────────────────────
+// Line weights (in CSS pixels — Line2 keeps a constant on-screen thickness at
+// any zoom, which is exactly the crisp engineering-drawing look we want).
+const LW = { edge:2.6, bold:3.6, border:1.6, proj:1.7, cross:2.4, ref:1.6, arc:2.0, arcBold:2.8 };
+
 function apl(g,s,c,o,e){const m=new THREE.Mesh(new THREE.PlaneGeometry(s,s),new THREE.MeshBasicMaterial({color:new THREE.Color(c),transparent:true,opacity:o,side:THREE.DoubleSide,depthWrite:false}));m.rotation.copy(e);g.add(m);}
-function asg(g,a,b,c,dash){const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]);const mat=dash?new THREE.LineDashedMaterial({color:new THREE.Color(c),dashSize:.18,gapSize:.10}):new THREE.LineBasicMaterial({color:new THREE.Color(c)});const l=new THREE.Line(geo,mat);if(dash)l.computeLineDistances();g.add(l);}
-function alp(g,pts,c){const p=[...pts,pts[0]].map(([x,y,z])=>new THREE.Vector3(x,y,z||0));g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:new THREE.Color(c)})));}
-function asp(g,x,y,z,r,c){const m=new THREE.Mesh(new THREE.SphereGeometry(r,20,16),new THREE.MeshBasicMaterial({color:new THREE.Color(c),depthTest:false}));m.renderOrder=3;m.position.set(x,y,z);g.add(m);}
-function acr(g,cx,cy,cz,r,c,is3D){const pts=is3D?[new THREE.Vector3(cx-r,cy,cz),new THREE.Vector3(cx+r,cy,cz),new THREE.Vector3(cx,cy,cz-r),new THREE.Vector3(cx,cy,cz+r)]:[new THREE.Vector3(cx-r,cy,0),new THREE.Vector3(cx+r,cy,0),new THREE.Vector3(cx,cy-r,0),new THREE.Vector3(cx,cy+r,0)];g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:new THREE.Color(c)})));}
+
+// fatLine — the single primitive every stroke now routes through. flat is a flat
+// [x,y,z,x,y,z,…] array; width is in pixels; dashed uses world-space dash sizing.
+// The material is registered in curMats so layout() can refresh its resolution.
+function fatLine(g,flat,colHex,width,dashed){
+  const geo=new LineGeometry(); geo.setPositions(flat);
+  const mat=new LineMaterial({
+    color:new THREE.Color(colHex).getHex(), linewidth:width, worldUnits:false,
+    transparent:true, dashed:!!dashed, dashSize:0.20, gapSize:0.13, dashScale:1,
+  });
+  mat.resolution.set(curRes.x||1, curRes.y||1);
+  const ln=new Line2(geo,mat); ln.computeLineDistances();
+  if(curMats) curMats.push(mat);
+  g.add(ln); return ln;
+}
+
+function asg(g,a,b,c,dash,w){
+  return fatLine(g,[a[0],a[1],a[2]||0, b[0],b[1],b[2]||0], c, w!=null?w:(dash?LW.proj:LW.edge), !!dash);
+}
+function alp(g,pts,c,w){
+  const flat=[]; [...pts,pts[0]].forEach(p=>flat.push(p[0],p[1],p[2]||0));
+  return fatLine(g,flat,c,w!=null?w:LW.border,false);
+}
+function asp(g,x,y,z,r,c){const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,18),new THREE.MeshBasicMaterial({color:new THREE.Color(c),depthTest:false}));m.renderOrder=3;m.position.set(x,y,z);g.add(m);}
+// Cross marker — two crisp fat strokes (clear engineering-style point symbol).
+function acr(g,cx,cy,cz,r,c,is3D){
+  if(is3D){ asg(g,[cx-r,cy,cz],[cx+r,cy,cz],c,0,LW.cross); asg(g,[cx,cy,cz-r],[cx,cy,cz+r],c,0,LW.cross); }
+  else { asg(g,[cx-r,cy,0],[cx+r,cy,0],c,0,LW.cross); asg(g,[cx,cy-r,0],[cx,cy+r,0],c,0,LW.cross); }
+}
+
+// roundRect path (Path2D.roundRect / ctx.roundRect aren't universal yet).
+function roundRect(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+// High-resolution sprite label. Supersamples the canvas (SS) and uses anisotropic
+// filtering so text stays sharp when zoomed out or on small canvases. Sprite
+// scales (sx,sy) are unchanged from the validated values — only crispness improves.
 function alb(g,txt,x,y,z,c,sx=.7,sy=.35,mono=false,cw=512){
-  const cv=document.createElement('canvas'); cv.width=cw; cv.height=128;
-  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,cw,128);
-  const wt=mono?'500':'bold', base=mono?40:44,
+  const SS=3, W=cw*SS, H=128*SS;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,W,H);
+  const wt=mono?'600':'bold', base=(mono?40:44)*SS,
         fam=mono?'"IBM Plex Mono",ui-monospace,monospace':'"Atkinson Hyperlegible",system-ui,sans-serif';
-  ctx.font=`${wt} ${base}px ${fam}`;
-  const maxW=cw-24, w=ctx.measureText(txt).width;
-  if(w>maxW) ctx.font=`${wt} ${Math.floor(base*maxW/w)}px ${fam}`;
-  ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,cw/2,64);
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));
+  let fs=base; ctx.font=`${wt} ${fs}px ${fam}`;
+  const maxW=(cw-24)*SS; let w=ctx.measureText(txt).width;
+  if(w>maxW){ fs=Math.floor(base*maxW/w); ctx.font=`${wt} ${fs}px ${fam}`; }
+  ctx.fillStyle=c; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,W/2,H/2);
+  const tex=new THREE.CanvasTexture(cv); tex.anisotropy=MAX_ANISO;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
   sp.position.set(x,y,z); sp.scale.set(sx,sy,1); g.add(sp);
+}
+
+// Boxed point label — the "engineering software" look for vertex/point names
+// (A, B, a′, b′, a, b …): coloured text on a white rounded-rectangle plate with a
+// thin tinted border. The canvas is sized to the text so the plate never distorts;
+// h is the target world height of the chip and the width follows the text.
+function albBox(g,txt,x,y,z,c,h=0.34){
+  const SS=3, fam='"Atkinson Hyperlegible",system-ui,sans-serif', wt='bold', fs=64*SS;
+  const meas=document.createElement('canvas').getContext('2d');
+  meas.font=`${wt} ${fs}px ${fam}`;
+  const tw=meas.measureText(txt).width, padX=24*SS, padY=15*SS;
+  const W=Math.ceil(tw+padX*2), H=Math.ceil(fs*1.12+padY*2);
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  roundRect(ctx,2*SS,2*SS,W-4*SS,H-4*SS,H*0.34);
+  ctx.fillStyle='#ffffff'; ctx.fill();
+  ctx.lineWidth=3*SS; ctx.strokeStyle=mix(c,COL.ink,0.22); ctx.stroke();
+  ctx.font=`${wt} ${fs}px ${fam}`; ctx.fillStyle=c;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(txt,W/2,H/2);
+  const tex=new THREE.CanvasTexture(cv); tex.anisotropy=MAX_ANISO;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false}));
+  sp.position.set(x,y,z); sp.scale.set(h*W/H, h, 1); sp.renderOrder=4; g.add(sp);
 }
 // Blend a token colour toward another (used to DARKEN true-length / true-angle
 // elements toward ink). Returns a "#rrggbb" string usable by both asg() and alb().
@@ -366,9 +521,7 @@ const mix=(a,b,t)=>'#'+new THREE.Color(a).lerp(new THREE.Color(b),t).getHexStrin
 // True Length is drawn as ONE dark line (a single stroke darkened toward ink) —
 // never multi-stroke — so it reads as a single clean bold line in 3D and in 2D.
 function asgBold(g,a,b,colHex){
-  const col=mix(colHex,COL.ink,0.55);
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]),
-    new THREE.LineBasicMaterial({color:new THREE.Color(col)})));
+  return fatLine(g,[a[0],a[1],a[2]||0, b[0],b[1],b[2]||0], mix(colHex,COL.ink,0.55), LW.bold, false);
 }
 
 // A 3D angle mark: a dashed reference ray from C along refDir, an arc swung to
@@ -379,20 +532,20 @@ function angle3(g,C,refDir,lineDir,len,colHex,label){
   const ld=new THREE.Vector3(...lineDir); if(ld.lengthSq()<1e-6) return; ld.normalize();
   const axis=new THREE.Vector3().crossVectors(ref,ld); if(axis.lengthSq()<1e-6) return; axis.normalize();
   const refEnd=c.clone().add(ref.clone().multiplyScalar(len));
-  asg(g,[c.x,c.y,c.z],[refEnd.x,refEnd.y,refEnd.z],colHex,1);     // dashed reference ray
-  const r=len*0.62, ang=ref.angleTo(ld), segs=20, pts=[];
-  for(let i=0;i<=segs;i++){ const q=new THREE.Quaternion().setFromAxisAngle(axis,ang*i/segs); pts.push(c.clone().add(ref.clone().multiplyScalar(r).applyQuaternion(q))); }
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:new THREE.Color(colHex)})));
+  asg(g,[c.x,c.y,c.z],[refEnd.x,refEnd.y,refEnd.z],colHex,1,LW.ref);     // dashed reference ray
+  const r=len*0.62, ang=ref.angleTo(ld), segs=24, pts=[];
+  for(let i=0;i<=segs;i++){ const q=new THREE.Quaternion().setFromAxisAngle(axis,ang*i/segs); const p=c.clone().add(ref.clone().multiplyScalar(r).applyQuaternion(q)); pts.push(p.x,p.y,p.z); }
+  fatLine(g,pts,colHex,LW.arc,false);
   const qm=new THREE.Quaternion().setFromAxisAngle(axis,ang*0.5);
   const lp=c.clone().add(ref.clone().multiplyScalar(r+0.6).applyQuaternion(qm));
   alb(g,label,lp.x,lp.y,lp.z,colHex,1.6,.44,true,256);
 }
 
-// Arc in the z=0 plane (for angle marks). bold → double-stroke + darkened.
+// Arc in the z=0 plane (for angle marks). bold → thicker + darkened.
 function arc(g,cx,cy,r,a0,a1,colHex,bold){
-  const segs=24, mk=rr=>{const p=[];for(let i=0;i<=segs;i++){const a=a0+(a1-a0)*i/segs;p.push(new THREE.Vector3(cx+Math.cos(a)*rr,cy+Math.sin(a)*rr,0));}
-    return new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:new THREE.Color(colHex)}));};
-  g.add(mk(r)); if(bold) g.add(mk(r+0.05));
+  const segs=28, flat=[];
+  for(let i=0;i<=segs;i++){ const a=a0+(a1-a0)*i/segs; flat.push(cx+Math.cos(a)*r,cy+Math.sin(a)*r,0); }
+  fatLine(g,flat,colHex,bold?LW.arcBold:LW.arc,false);
 }
 
 // Mark the angle a 2D view makes with XY: dashed horizontal reference at the
@@ -414,7 +567,6 @@ function swap(){
   mainIs3D=!mainIs3D;
   S3.ctrl.enableRotate=mainIs3D;
   pipLbl.textContent=mainIs3D?'2D Drawing':'3D View';
-  $('tlbl').textContent=mainIs3D?'3D shown large':'2D shown large';
   $('tb3').classList.toggle('on', mainIs3D);
   $('tb2').classList.toggle('on',!mainIs3D);
   $('tb3').setAttribute('aria-pressed', String(mainIs3D));
@@ -615,6 +767,7 @@ window.simAPI={
 window.addEventListener('load',()=>{
   readTokens();
   S3=build(c3,true); S2=build(c2,false);
+  MAX_ANISO=Math.max(S3.rend.capabilities.getMaxAnisotropy(),1);
   wire(); buildRail(); layout(); renderStep(0); loop();
   setTimeout(layout,100);
   window.__simStarted=true;

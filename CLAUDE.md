@@ -262,11 +262,19 @@ viewport.
 
 ---
 
-## HP unfolding animation
+## HP unfolding animation (REVERSIBLE — fold ⇄ unfold)
 
-Triggered by the **▶ Animate Unfolding** button. Runs only in the 3D scene (S3).
-`runAnimation()` rebuilds the scene in the SAME world axes as `draw3D` so the
-first animation frame is pixel-identical to the static scene — **no jump.**
+Triggered by the fold button. Runs only in the 3D scene (S3). `runAnimation()` is a
+**dispatcher on a module-level `folded` flag**: forward (`unfoldTo2D`→`animateFold(false)`)
+or reverse (`foldBackTo3D`→`animateFold(true)`). The shared scene is built once by
+`buildAnimScene()` in the SAME world axes as `draw3D`, so the first frame is
+pixel-identical to the static scene — **no jump.** `foldStateAt(p)` returns `{rot,op}`
+for the forward timeline; **reverse evaluates it at `1 − t`**, an exact mirror (same
+duration, easing, hinge). The button text toggles `ANIM_LABEL` ('▶ Animate Unfolding')
+⇄ `REFOLD_LABEL` ('↩ Fold back to 3D'); on reverse-complete it calls `rebuild()` to
+restore the live 3D scene. `rebuild()` clears `folded` + calls `resetAnimButton()`, so
+step navigation / control changes never strand a folded sheet. **Both the Points
+(`main.js`) and Lines (`lines.js`) modules share this reversible design.**
 
 **What happens:**
 1. The scene is rebuilt: VP (XY plane, z=0), fold line, point P, and `p′` + its
@@ -284,9 +292,10 @@ first animation frame is pixel-identical to the static scene — **no jump.**
    projectors `P→p` and `P→p′`) fade to opacity 0 over the last ~28 % of the
    timeline, leaving a clean 2D sheet. The `p′→fold` and `p→fold` connectors stay
    (they lie in the sheet plane and form the vertical projector through the XY line).
-5. **Final frame is frozen** — no camera reset, no rebuild to 3D, no loop. The
-   folded sheet stays on screen until the user changes a control (which triggers a
-   normal `rebuild()` back to the 3D scene).
+5. **Forward end = frozen flat sheet** (`folded=true`, no camera reset/rebuild). The
+   sheet stays until the user clicks **Fold back to 3D** (reverse animation) or changes
+   a control / navigates a step (normal `rebuild()` back to 3D). **Reverse end** sets
+   `folded=false` and calls `rebuild()` to return to the live, interactive 3D scene.
 
 **The HP projector `P → foot` is dynamic:** a `footTracker` Object3D rides inside
 `hpGroup`, and each frame the projector is redrawn from the static P to the foot's
@@ -307,16 +316,25 @@ All geometry helpers take `g` (a `THREE.Group`) as their first argument:
 | Helper | Purpose |
 |---|---|
 | `apl(g, size, color, opacity, euler)` | Add a semi-transparent plane mesh |
-| `asg(g, a, b, color, dashed)` | Add a line segment (solid or dashed) |
-| `alp(g, points[], color)` | Add a closed loop polyline |
+| `fatLine(g, flat[], color, width, dashed)` | Core stroke primitive — a `Line2` (thick, crisp). Registers its `LineMaterial` in `curMats` |
+| `asg(g, a, b, color, dashed, w?)` | Add a line segment (solid or dashed) — routes through `fatLine` |
+| `alp(g, points[], color, w?)` | Add a closed loop polyline — routes through `fatLine` |
 | `asp(g, x, y, z, r, color)` | Add a sphere (point P marker) |
-| `acr(g, cx, cy, cz, r, color, is3D)` | Add a cross marker (foot of perpendicular) |
+| `acr(g, cx, cy, cz, r, color, is3D)` | Add a cross marker (two `fatLine` strokes) |
 | `adm(g, x1,y1,x2,y2, color, text)` | Add a dimension line with filled arrowheads |
-| `alb(g, text, x,y,z, color, sx, sy)` | Add a canvas-texture sprite label |
+| `alb(g, text, x,y,z, color, sx, sy, mono?, cw?)` | Add a canvas-texture sprite label |
+| `albBox(g, text, x,y,z, color, h?)` | Boxed point label: coloured text on a white rounded-rect plate (P / p / p′) |
 
-`alb()` creates a 512×128 canvas, draws text with `bold 44px system-ui`, and wraps it
-in a `THREE.Sprite`. Canvas width is 512 (not 256) to prevent clipping of long labels
-like `P(50, 36, 0)`.
+**Fat lines (`Line2`):** every stroke is a `Line2`/`LineMaterial` so line weight is
+real and constant on-screen (widths live in the `LW` const, in CSS px). `LineMaterial`
+needs `resolution` = the canvas pixel size; `fill()`/the fold builder set `curMats` +
+`curRes` (via `sizeOf(is3D)`), and `layout()` calls `updateLineRes()` on resize/swap.
+Each scene owns `lineMats[]`. Dynamic fold trackers stay thin `THREE.Line` (they fade).
+
+`alb()` **supersamples** (SS=3) + anisotropic filtering so text stays sharp at small
+sizes; same call signature and validated sprite scales. `albBox()` sizes its canvas to
+the text so the white chip never distorts; `h` is the chip's world height. Plane names
+(HP/VP/XY) stay plain `alb` with their token colours.
 
 `adm()` uses `THREE.ShapeGeometry` for filled triangle arrowheads. Arrowheads point
 **inward** (toward each other). The label is placed to the left of the dimension line.

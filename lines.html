@@ -151,7 +151,7 @@ input[type=range]{
 }
 input[type=range]::-webkit-slider-runnable-track{
   height:4px;border-radius:999px;
-  background:linear-gradient(90deg,var(--accent) var(--p),var(--track) var(--p));
+  background:var(--track);
 }
 input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;width:16px;height:16px;border-radius:50%;margin-top:-6px;
@@ -160,7 +160,7 @@ input[type=range]::-webkit-slider-thumb{
 input[type=range]:hover::-webkit-slider-thumb,
 input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--paper),var(--halo)}
 input[type=range]::-moz-range-track{height:4px;border-radius:999px;background:var(--track)}
-input[type=range]::-moz-range-progress{height:4px;border-radius:999px;background:var(--accent)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:999px;background:var(--track)}
 input[type=range]::-moz-range-thumb{
   width:16px;height:16px;border:1px solid var(--accent-strong);border-radius:50%;
   background:var(--accent);box-shadow:0 0 0 2px var(--paper)}
@@ -402,7 +402,6 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
   </div>
   <div id="tbar">
     <button id="tb3" class="tb on">3D View</button>
-    <span id="tlbl">3D shown large</span>
     <button id="tb2" class="tb">2D Drawing</button>
   </div>
   <div id="vp-status" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
