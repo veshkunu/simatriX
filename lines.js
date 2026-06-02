@@ -37,6 +37,13 @@ const curRes = new THREE.Vector2(1, 1);
 // Viewport toggles (Labels / Dimensions / Projectors) — default all on.
 let tLabels = true, tDims = true, tProj = true;
 
+// Construction overlays (Traces / True-Length). conMode ∈ null | 'trace' | 'tl'.
+// Each is a self-contained animated construction drawn into the 2D scene (S2),
+// frozen when finished; any rebuild() tears it down and restores the live scene.
+let conMode = null, conRAF = null;
+let conApply = null;                 // applies a 0..1 progress to the current build
+let tlPhase = 0, tlPlaying = false, tlPhaseT = 0, tlPrevTime = 0;
+
 const $ = id => document.getElementById(id);
 const area=$('canvas-area'), c3=$('c3d'), c2=$('c2d');
 const pipBox=$('pip-box'), pipLbl=$('pip-lbl'), live=$('live'), termPop=$('term-pop');
@@ -48,7 +55,8 @@ function readTokens(){
   const cs = getComputedStyle(document.documentElement);
   const t = n => cs.getPropertyValue(n).trim();
   COL = { paper:t('--paper'), ink:t('--ink'), ink2:t('--ink2'), bench:t('--bench'),
-          border:t('--border'), hp:t('--hp'), vp:t('--vp'), accent:t('--accent') };
+          border:t('--border'), hp:t('--hp'), vp:t('--vp'), accent:t('--accent'),
+          construct:t('--construct'), locus:t('--locus'), tlg:t('--tl-green') };
 }
 
 function build(canvas, is3D){
@@ -106,8 +114,9 @@ function loop(){
 function rebuild(d){
   data=d;
   if(animating) return;
-  // A normal rebuild always redraws the live, interactive 3D scene, so we are no
-  // longer showing a flattened sheet — clear the fold state and reset the button.
+  // A normal rebuild restores the live, interactive scene — tear down any
+  // construction overlay (Traces / True-Length) and clear the flattened state.
+  if(conMode) teardownConUI();
   if(folded){ folded=false; resetFoldButton(); }
   const v=viewFor(step);
   const M=resolveLine(d);
@@ -138,8 +147,8 @@ function draw3D(g,M,v){
   alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
   asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);                        // XY fold line
   if(tLabels){
-    alb(g,'HP',3.4,-.45,1.1,COL.hp,2.0,.78);
-    alb(g,'VP',-3.1,3.4,.06,COL.vp,2.0,.78);
+    alb(g,'HP',-3.6,-.3,3.6,COL.hp,2.0,.78);
+    alb(g,'VP',-3.6,3.7,.05,COL.vp,2.0,.78);
     alb(g,'XY',S/2-.5,-.35,0,COL.ink,1.0,.5);
   }
   if(!v.showLine) return;
@@ -195,6 +204,25 @@ function draw3D(g,M,v){
   }
 }
 
+// Shared 2D layout — the single source of truth for where the front view (FV,
+// above XY) and top view (TV, below XY) land on the sheet. draw2D and the Traces /
+// True-Length overlays all consume this so their geometry is pixel-aligned.
+function sheet2D(M){
+  const HW=6.2, HH=4.6;
+  const cx=(M.A.x+M.B.x)/2;
+  const ax=W(M.A.x-cx), bx=W(M.B.x-cx);
+  const aUp=W(M.A.y), bUp=W(M.B.y), aDn=W(M.A.z), bDn=W(M.B.z);
+  const maxX=Math.max(Math.abs(ax),Math.abs(bx),1e-3);
+  const maxV=Math.max(aUp,bUp,aDn,bDn,1e-3);
+  const fit=Math.min(1,(HW-0.9)/maxX,(HH-0.9)/maxV);
+  const F=n=>n*fit;
+  return { HW, HH, F,
+    A1:[F(ax),F(aUp),0], B1:[F(bx),F(bUp),0],     // a' b'  elevation (primed)
+    A2:[F(ax),-F(aDn),0], B2:[F(bx),-F(bDn),0],   // a  b   plan (unprimed)
+    fvTrue:Math.abs(M.fvLen-M.tl)<0.5, tvTrue:Math.abs(M.tvLen-M.tl)<0.5,
+    fvPoint:M.fvLen<0.6, tvPoint:M.tvLen<0.6 };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 2D SCENE — the orthographic sheet: FV above XY, TV below XY,
 // joined by vertical projectors. Auto-fits so any line stays in frame.
@@ -205,26 +233,15 @@ function draw2D(g,M,v){
   asg(g,[-HW-.3,0,0],[HW+.3,0,0],COL.ink,0);                    // XY line
   if(tLabels){
     alb(g,'x',-HW-.05,.38,0,COL.ink,.85,.72,false,128); alb(g,'y',HW+.05,.38,0,COL.ink,.85,.72,false,128);
-    alb(g,'VP',-HW+.5,.9,0,COL.vp,1.5,.9,false,128); alb(g,'HP',-HW+.5,-.9,0,COL.hp,1.5,.9,false,128);
+    alb(g,'VP',-HW+.5,2.4,0,COL.vp,1.5,.9,false,128); alb(g,'HP',-HW+.5,-2.4,0,COL.hp,1.5,.9,false,128);
   }
   if(!(v.showFV && v.showTV)){
     alb(g,'Front & top views appear here',0,0,0,COL.bench,4.6,.42);
     return;
   }
 
-  const cx=(M.A.x+M.B.x)/2;
-  let ax=W(M.A.x-cx), bx=W(M.B.x-cx);
-  let aUp=W(M.A.y), bUp=W(M.B.y);      // FV heights (above XY)
-  let aDn=W(M.A.z), bDn=W(M.B.z);      // TV depths (below XY)
-  const maxX=Math.max(Math.abs(ax),Math.abs(bx),1e-3);
-  const maxV=Math.max(aUp,bUp,aDn,bDn,1e-3);
-  const fit=Math.min(1,(HW-0.9)/maxX,(HH-0.9)/maxV);
-  const F=n=>n*fit;
-
-  const A1=[F(ax),F(aUp),0], B1=[F(bx),F(bUp),0];               // a' b'  elevation (primed)
-  const A2=[F(ax),-F(aDn),0], B2=[F(bx),-F(bDn),0];            // a  b   plan (unprimed)
-  const fvTrue=Math.abs(M.fvLen-M.tl)<0.5, tvTrue=Math.abs(M.tvLen-M.tl)<0.5;
-  const fvPoint=M.fvLen<0.6, tvPoint=M.tvLen<0.6;
+  const L=sheet2D(M);
+  const {F,A1,B1,A2,B2,fvTrue,tvTrue,fvPoint,tvPoint}=L;
 
   // Vertical projectors linking the two views through XY
   if(tProj){
@@ -301,6 +318,7 @@ function foldStateAt(p){
 
 function runFold(){
   if(animating) return;
+  if(conMode) exitCon();                  // leave any construction overlay first
   const v=viewFor(step);
   if(!(v.showFV && v.showTV)) return;     // nothing to fold yet
   folded ? foldBackTo3D() : flattenTo2D();
@@ -347,7 +365,7 @@ function buildFoldScene(){
   // VP (static)
   apl(g,S,COL.vp,.07,new THREE.Euler(0,0,0));
   alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
-  alb(g,'VP',-3.1,3.4,.06,COL.vp,2.0,.78);
+  alb(g,'VP',-3.6,3.7,.05,COL.vp,2.0,.78);
   asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);
 
   // Front view a'b' + connectors to XY (stay in z=0 plane) — KEEP
@@ -371,7 +389,7 @@ function buildFoldScene(){
     new THREE.MeshBasicMaterial({color:new THREE.Color(COL.hp),transparent:true,opacity:.10,side:THREE.DoubleSide,depthWrite:false}));
   hpMesh.rotation.x=-Math.PI/2; hpGroup.add(hpMesh);
   alp(hpGroup,[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2]],COL.hp);
-  alb(hpGroup,'HP',3.4,-.45,1.1,COL.hp,2.0,.78);
+  alb(hpGroup,'HP',-3.6,-.3,3.6,COL.hp,2.0,.78);
   const aT=[ax,0,W(M.A.z)], bT=[bx,0,W(M.B.z)];
   asg(hpGroup,aT,bT,COL.hp,0);
   asg(hpGroup,aT,[ax,0,0],COL.hp,0); asg(hpGroup,bT,[bx,0,0],COL.hp,0);
@@ -429,6 +447,384 @@ function animateFold(reverse){
     }
   }
   requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONSTRUCTION OVERLAYS — Traces (HT/VT) and the True-Length rotating-line
+// method. Both are pure-2D constructions animated on the orthographic sheet (S2),
+// frozen when complete. Any rebuild() (slider, step nav, reset) tears them down.
+// ═══════════════════════════════════════════════════════════════
+const clamp01=x=>Math.min(1,Math.max(0,x));
+const lc=(x,a,b)=>clamp01((x-a)/(b-a));
+const lerp2=(P,Q,t)=>[P[0]+(Q[0]-P[0])*t, P[1]+(Q[1]-P[1])*t];
+const easeOut=t=>1-Math.pow(1-t,3);
+
+// Thin construction line (kept thin on purpose — these are drafting aids). Returns
+// the THREE.Line; update its ends with setSeg / its arc with setArc.
+function conLine(g,colHex,dashed){
+  const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const mat=dashed?new THREE.LineDashedMaterial({color:new THREE.Color(colHex),dashSize:.16,gapSize:.12,transparent:true})
+                  :new THREE.LineBasicMaterial({color:new THREE.Color(colHex),transparent:true});
+  const l=new THREE.Line(geo,mat); g.add(l); return l;
+}
+function setSeg(l,a,b){ l.geometry.setFromPoints([new THREE.Vector3(a[0],a[1],a[2]||0),new THREE.Vector3(b[0],b[1],b[2]||0)]); if(l.material.isLineDashedMaterial) l.computeLineDistances(); }
+function setArc(l,cx,cy,r,a0,a1){
+  const n=Math.max(2,Math.ceil(Math.abs(a1-a0)/0.12)), pts=[];
+  for(let i=0;i<=n;i++){ const a=a0+(a1-a0)*i/n; pts.push(new THREE.Vector3(cx+Math.cos(a)*r,cy+Math.sin(a)*r,0)); }
+  l.geometry.setFromPoints(pts); if(l.material.isLineDashedMaterial) l.computeLineDistances();
+}
+function setFat(line,a,b){ line.geometry.setPositions([a[0],a[1],a[2]||0,b[0],b[1],b[2]||0]); line.computeLineDistances(); }
+function setOp(o,val){ o.traverse(c=>{ if(c.material){ c.material.transparent=true; c.material.opacity=val; } }); }
+
+// Marker = optional soft glow disc + a crisp cross + a boxed label, grouped at (x,y).
+function conMarker(parent,x,y,colHex,txt,glow,h=0.3,dx=0.0,dy=0.42){
+  const grp=new THREE.Group(); grp.position.set(x,y,0); parent.add(grp);
+  if(glow){ const m=new THREE.Mesh(new THREE.CircleGeometry(0.3,28),new THREE.MeshBasicMaterial({color:new THREE.Color(colHex),transparent:true,opacity:.32,depthTest:false})); m.renderOrder=2; grp.add(m); }
+  acr(grp,0,0,0,.16,colHex,false);
+  if(txt) albBox(grp,txt,dx,dy,0,colHex,h);
+  return grp;
+}
+function conLabel(parent,x,y,colHex,txt,h=0.34){ const grp=new THREE.Group(); parent.add(grp); albBox(grp,txt,x,y,0,colHex,h); return grp; }
+
+// Small engineering circle (drafting point — a thin ring + a tiny centre dot), at
+// roughly endpoint-marker scale. Used for HT / VT instead of a large filled blob.
+function engCircle(parent,x,y,colHex,r=0.15){
+  const grp=new THREE.Group(); grp.position.set(x,y,0); parent.add(grp);
+  const n=36, flat=[]; for(let i=0;i<=n;i++){ const a=i/n*Math.PI*2; flat.push(Math.cos(a)*r,Math.sin(a)*r,0); }
+  fatLine(grp,flat,colHex,2.0,false);
+  const dot=new THREE.Mesh(new THREE.CircleGeometry(r*0.3,16),new THREE.MeshBasicMaterial({color:new THREE.Color(colHex),transparent:true,depthTest:false})); dot.renderOrder=3; grp.add(dot);
+  return grp;
+}
+// Tiny filled point (for h / v on XY).
+function smallDot(parent,x,y,colHex,r=0.07){
+  const grp=new THREE.Group(); grp.position.set(x,y,0); parent.add(grp);
+  const d=new THREE.Mesh(new THREE.CircleGeometry(r,18),new THREE.MeshBasicMaterial({color:new THREE.Color(colHex),transparent:true,depthTest:false})); d.renderOrder=3; grp.add(d);
+  return grp;
+}
+// Right-angle (⊥) symbol where a projector crosses XY at (x,0). down=true opens into
+// HP (−y, for HT); down=false opens into VP (+y, for VT).
+function raSymbol(parent,x,down,colHex,s=0.2){
+  const grp=new THREE.Group(); parent.add(grp);
+  const dy=down?-s:s;
+  fatLine(grp,[x+s,0,0, x+s,dy,0, x,dy,0],colHex,1.7,false);
+  return grp;
+}
+
+// Reusable sheet pieces (frame + the two views) so overlays match draw2D exactly.
+function drawSheetFrame(g,L){
+  const {HW,HH}=L;
+  alp(g,[[-HW-.3,-HH-.3,0],[HW+.3,-HH-.3,0],[HW+.3,HH+.3,0],[-HW-.3,HH+.3,0]],COL.border);
+  asg(g,[-HW-.3,0,0],[HW+.3,0,0],COL.ink,0);
+  if(tLabels){
+    alb(g,'x',-HW-.05,.38,0,COL.ink,.85,.72,false,128); alb(g,'y',HW+.05,.38,0,COL.ink,.85,.72,false,128);
+    alb(g,'VP',-HW+.5,2.4,0,COL.vp,1.5,.9,false,128); alb(g,'HP',-HW+.5,-2.4,0,COL.hp,1.5,.9,false,128);
+  }
+}
+function drawSheetViews(g,M,L){
+  const {A1,B1,A2,B2,fvTrue,tvTrue,fvPoint,tvPoint}=L;
+  if(tProj){ asg(g,[A1[0],A1[1],0],[A2[0],A2[1],0],COL.bench,1); asg(g,[B1[0],B1[1],0],[B2[0],B2[1],0],COL.bench,1); }
+  if(fvPoint){ acr(g,A1[0],A1[1],0,.2,COL.vp,false); }
+  else { fvTrue?asgBold(g,A1,B1,COL.vp):asg(g,A1,B1,COL.vp,0); acr(g,A1[0],A1[1],0,.16,COL.vp,false); acr(g,B1[0],B1[1],0,.16,COL.vp,false); }
+  if(tvPoint){ acr(g,A2[0],A2[1],0,.2,COL.hp,false); }
+  else { tvTrue?asgBold(g,A2,B2,COL.hp):asg(g,A2,B2,COL.hp,0); acr(g,A2[0],A2[1],0,.16,COL.hp,false); acr(g,B2[0],B2[1],0,.16,COL.hp,false); }
+  if(tLabels){
+    if(fvPoint) albBox(g,"a'b'",A1[0]+.58,A1[1]+.48,0,COL.vp,.34);
+    else { albBox(g,"a'",A1[0]-.45,A1[1]+.45,0,COL.vp,.32); albBox(g,"b'",B1[0]+.45,B1[1]+.45,0,COL.vp,.32); }
+    if(tvPoint) albBox(g,'ab',A2[0]+.58,A2[1]-.48,0,COL.hp,.34);
+    else { albBox(g,'a',A2[0]-.45,A2[1]-.45,0,COL.hp,.32); albBox(g,'b',B2[0]+.45,B2[1]-.45,0,COL.hp,.32); }
+  }
+}
+
+// Clear S2 and prepare it for an overlay build (mirrors fill()'s bookkeeping).
+function beginConScene(){
+  const g=S2.grp;
+  g.traverse(o=>{if(o!==g){o.geometry?.dispose();[o.material].flat().forEach(m=>{m?.map?.dispose();m?.dispose();});}});
+  g.clear();
+  curMats=S2.lineMats; curMats.length=0;
+  const [rw,rh]=sizeOf(false); curRes.set(rw,rh);
+  return g;
+}
+
+// ── Mode lifecycle ────────────────────────────────────────────
+// The launchers are disclosure toggles: expose both pressed (on/off) and expanded
+// (panel shown) so screen readers announce state on activation.
+function setConBtn(id,on){ const b=$(id); if(!b) return; b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on)); b.setAttribute('aria-expanded',String(on)); }
+// Single source of truth for the play/pause control's label, icon, and state.
+function setPlayBtn(playing){ const b=$('tl-play'); if(!b) return; b.textContent=playing?'⏸':'▶'; b.setAttribute('aria-label',playing?'Pause construction':'Play construction'); b.setAttribute('aria-pressed',String(playing)); }
+function teardownConUI(){
+  cancelAnimationFrame(conRAF); conRAF=null; conApply=null;
+  tlPlaying=false; conMode=null;
+  setConBtn('btn-traces',false); setConBtn('btn-tl',false);
+  const tp=$('traces-panel'); if(tp) tp.hidden=true;
+  const lp=$('tl-panel'); if(lp) lp.hidden=true;
+  setPlayBtn(false);
+}
+function exitCon(){ teardownConUI(); rebuild(data); }
+// Used by value-editing controls (sliders / number fields / toggles). If a
+// construction overlay is open, editing values tears it down — so say so once,
+// rather than letting the drawing vanish without explanation.
+function rebuildFromEdit(d){ const wasCon=conMode; rebuild(d); if(wasCon) announce('Construction closed — now showing live values. Reopen Traces or True Length to rebuild it.'); }
+function runConAnim(dur){
+  cancelAnimationFrame(conRAF);
+  const start=performance.now();
+  const step=now=>{ const t=Math.min((now-start)/dur,1); conApply && conApply(t); if(t<1) conRAF=requestAnimationFrame(step); };
+  conRAF=requestAnimationFrame(step);
+}
+
+// ── Traces (HT / VT) ──────────────────────────────────────────
+function xAtY(P,Q,y){ const dy=Q[1]-P[1]; if(Math.abs(dy)<1e-4) return null; return P[0]+(Q[0]-P[0])*(y-P[1])/dy; }
+function yAtX(P,Q,x){ const dx=Q[0]-P[0]; if(Math.abs(dx)<1e-4) return null; return P[1]+(Q[1]-P[1])*(x-P[0])/dx; }
+function computeTraces(L){
+  const {A1,B1,A2,B2}=L;
+  let h=null,HT=null,v=null,VT=null;
+  const xh=xAtY(A1,B1,0);                                  // FV produced → XY
+  if(xh!==null){ h=[xh,0]; let y=yAtX(A2,B2,xh); if(y===null) y=A2[1]; HT=[xh,y]; }
+  const xv=xAtY(A2,B2,0);                                  // TV produced → XY
+  if(xv!==null){ v=[xv,0]; let y=yAtX(A1,B1,xv); if(y===null) y=A1[1]; VT=[xv,y]; }
+  return { h,HT,v,VT, noHT:!HT, noVT:!VT };
+}
+function enterTrace(){
+  if(conMode==='trace') return;
+  teardownConUI();
+  if(folded){ folded=false; resetFoldButton(); }
+  rebuild(data);                       // restore clean scenes first
+  conMode='trace';
+  if(mainIs3D) swap();                 // show the 2D drawing large
+  setConBtn('btn-traces',true);
+  $('traces-panel').hidden=false;
+  buildTraceScene();
+  // Reduced motion: skip the construction tween, show the finished traces at once
+  // (the lesson still updates — only the animation is suppressed).
+  reduceMotion.matches ? conApply(1) : runConAnim(5400);
+}
+// Standard EG trace construction (per view): SOLID original projection (drawn by
+// drawSheetViews) → DASHED extension to XY at h/v → DASHED perpendicular projector
+// (slightly darker) with a ⊥ symbol → DASHED extension of the OTHER view → the
+// small engineering-circle trace (HT teal / VT amber) at the intersection.
+function buildTraceScene(){
+  const M=resolveLine(data), L=sheet2D(M), g=beginConScene();
+  drawSheetFrame(g,L); drawSheetViews(g,M,L);
+  const {A1,B1,A2,B2}=L, T=computeTraces(L), cap=$('trace-cap');
+  const PCOL=mix(COL.construct,COL.ink,0.5);     // projector: darker than extensions
+  const both=!T.noHT && !T.noVT;
+
+  const feNear=Math.abs(A1[1])<=Math.abs(B1[1])?A1:B1;   // FV end nearest XY → starts the extension
+  const teNear=Math.abs(A2[1])<=Math.abs(B2[1])?A2:B2;
+
+  let extFV,projHT,tvExt,hG,htG,raH, extTV,projVT,fvExt,vG,vtG,raV, tvNear,fvNear;
+  if(!T.noHT){
+    tvNear=Math.abs(A2[0]-T.HT[0])<=Math.abs(B2[0]-T.HT[0])?A2:B2;   // TV end nearest HT
+    extFV=conLine(g,COL.construct,true);
+    projHT=conLine(g,PCOL,true);
+    tvExt=conLine(g,COL.construct,true);
+    raH=raSymbol(g,T.h[0],true,PCOL);
+    hG=smallDot(g,T.h[0],T.h[1],COL.ink); albBox(hG,'h',0,-0.34,0,COL.ink,.26);
+    htG=engCircle(g,T.HT[0],T.HT[1],COL.hp,.15); albBox(htG,'HT',0.46,-0.04,0,COL.hp,.3);
+  }
+  if(!T.noVT){
+    fvNear=Math.abs(A1[0]-T.VT[0])<=Math.abs(B1[0]-T.VT[0])?A1:B1;
+    extTV=conLine(g,COL.construct,true);
+    projVT=conLine(g,PCOL,true);
+    fvExt=conLine(g,COL.construct,true);
+    raV=raSymbol(g,T.v[0],false,PCOL);
+    vG=smallDot(g,T.v[0],T.v[1],COL.ink); albBox(vG,'v',0,0.34,0,COL.ink,.26);
+    vtG=engCircle(g,T.VT[0],T.VT[1],COL.vp,.15); albBox(vtG,'VT',0.5,0.04,0,COL.vp,.3);
+  }
+
+  // Six-step windows (extend · find h/v · perpendicular projector · extend other
+  // view · reveal trace). `both` runs HT then VT; a lone trace gets the full span.
+  const HT_E=both?[0,.12]:[0,.16], HT_P=both?[.14,.26]:[.18,.42],
+        HT_X=both?[.27,.39]:[.44,.66], HT_R=both?.42:.74;
+  const VT_E=both?[.50,.62]:[0,.16], VT_P=both?[.64,.76]:[.18,.42],
+        VT_X=both?[.77,.89]:[.44,.66], VT_R=both?.92:.74;
+
+  conApply = prog=>{
+    if(!T.noHT){
+      setSeg(extFV, feNear, lerp2(feNear,T.h, easeOut(lc(prog,HT_E[0],HT_E[1])))); setOp(extFV, prog>HT_E[0]?1:0);
+      setOp(hG, lc(prog,HT_E[1]-.03,HT_E[1]+.03));
+      setSeg(projHT, T.h, [T.h[0], T.h[1]+(T.HT[1]-T.h[1])*easeOut(lc(prog,HT_P[0],HT_P[1]))]); setOp(projHT, prog>=HT_P[0]?1:0);
+      setOp(raH, lc(prog,HT_P[0]+.02,HT_P[0]+.08));
+      setSeg(tvExt, tvNear, lerp2(tvNear,T.HT, easeOut(lc(prog,HT_X[0],HT_X[1])))); setOp(tvExt, prog>=HT_X[0]?1:0);
+      setOp(htG, lc(prog,HT_R-.02,HT_R+.05));
+    }
+    if(!T.noVT){
+      setSeg(extTV, teNear, lerp2(teNear,T.v, easeOut(lc(prog,VT_E[0],VT_E[1])))); setOp(extTV, prog>VT_E[0]?1:0);
+      setOp(vG, lc(prog,VT_E[1]-.03,VT_E[1]+.03));
+      setSeg(projVT, T.v, [T.v[0], T.v[1]+(T.VT[1]-T.v[1])*easeOut(lc(prog,VT_P[0],VT_P[1]))]); setOp(projVT, prog>=VT_P[0]?1:0);
+      setOp(raV, lc(prog,VT_P[0]+.02,VT_P[0]+.08));
+      setSeg(fvExt, fvNear, lerp2(fvNear,T.VT, easeOut(lc(prog,VT_X[0],VT_X[1])))); setOp(fvExt, prog>=VT_X[0]?1:0);
+      setOp(vtG, lc(prog,VT_R-.02,VT_R+.05));
+    }
+    let msg;
+    if(T.noHT&&T.noVT) msg='Line ∥ to both planes — it has no traces.';
+    else if(both){
+      if(prog<HT_P[0]) msg='Extend the front view to XY → h';
+      else if(prog<HT_X[0]) msg='From h, drop a projector ⊥ to XY';
+      else if(prog<HT_R) msg='Extend the top view to meet the projector';
+      else if(prog<VT_E[0]) msg='HT — front view extension meets the top view';
+      else if(prog<VT_P[0]) msg='Extend the top view to XY → v';
+      else if(prog<VT_X[0]) msg='From v, raise a projector ⊥ to XY';
+      else if(prog<VT_R) msg='Extend the front view to meet the projector';
+      else msg='VT — top view extension meets the front view';
+    } else if(!T.noHT){
+      msg = prog<HT_P[0] ? 'Extend the front view to XY → h'
+          : prog<HT_X[0] ? 'From h, drop a projector ⊥ to XY'
+          : prog<HT_R    ? 'Extend the top view to meet the projector'
+          : 'HT found · line ∥ VP, so there is no VT';
+    } else {
+      msg = prog<VT_P[0] ? 'Extend the top view to XY → v'
+          : prog<VT_X[0] ? 'From v, raise a projector ⊥ to XY'
+          : prog<VT_R    ? 'Extend the front view to meet the projector'
+          : 'VT found · line ∥ HP, so there is no HT';
+    }
+    if(cap && cap.textContent!==msg) cap.textContent=msg;
+  };
+  conApply(0);
+}
+
+// ── True Length & Angles (Rotating-Line method) ───────────────
+const TL_N = 12, TL_PHASE_MS = 1150;
+const TL_STEP_TEXT = [
+  'Step 1 · Rotate the top view about a until it is parallel to XY.',
+  'Step 2 · Draw the locus arc swept by the rotated end.',
+  'Step 3 · Project the rotated end upward.',
+  'Step 4 · Meet the horizontal locus of the front-view end → b₁′.',
+  'Step 5 · Join a′–b₁′ — this is the True Length.',
+  'Step 6 · Measure θ — the true inclination with HP.',
+  'Step 1 · Rotate the front view about a until it is parallel to XY.',
+  'Step 2 · Draw the locus arc swept by the rotated end.',
+  'Step 3 · Project the rotated end downward.',
+  'Step 4 · Meet the horizontal locus of the top-view end → b₁.',
+  'Step 5 · Join a–b₁ — the True Length (same value).',
+  'Step 6 · Measure φ — the true inclination with VP.',
+];
+function setTLCaption(){
+  // Only write when the text actually changes — these are aria-live regions and
+  // applyTLState runs every frame during play; re-setting identical text re-announces.
+  const c=$('tl-cap'), s=$('tl-step');
+  const cap = tlPhase<6 ? 'Part A — Top-View Rotation → TL & θ' : 'Part B — Front-View Rotation → TL & φ';
+  if(c && c.textContent!==cap) c.textContent=cap;
+  const st = TL_STEP_TEXT[tlPhase];
+  if(s && s.textContent!==st) s.textContent=st;
+}
+function enterTL(){
+  if(conMode==='tl') return;
+  teardownConUI();
+  if(folded){ folded=false; resetFoldButton(); }
+  rebuild(data);
+  conMode='tl';
+  if(mainIs3D) swap();
+  setConBtn('btn-tl',true);
+  $('tl-panel').hidden=false;
+  buildTLScene();
+  tlPhase=0; tlPhaseT=0; tlPlaying=false; setPlayBtn(false);
+  applyTLState();
+}
+function buildTLScene(){
+  const M=resolveLine(data), L=sheet2D(M), g=beginConScene();
+  drawSheetFrame(g,L);
+
+  const {A1,B1,A2,B2}=L;
+  const pivotIsA = A1[0]<=B1[0];
+  const fvPiv=pivotIsA?A1:B1, fvOth=pivotIsA?B1:A1;
+  const tvPiv=pivotIsA?A2:B2, tvOth=pivotIsA?B2:A2;
+  const pivX=fvPiv[0];
+  const Lplan=Math.hypot(tvOth[0]-tvPiv[0],tvOth[1]-tvPiv[1]);
+  const Lelev=Math.hypot(fvOth[0]-fvPiv[0],fvOth[1]-fvPiv[1]);
+  const tvRot=[pivX+Lplan,tvPiv[1]], fvRot=[pivX+Lelev,fvPiv[1]];
+  const bTLA=[pivX+Lplan,fvOth[1]],  bTLB=[pivX+Lelev,tvOth[1]];
+  const startA=Math.atan2(tvOth[1]-tvPiv[1],tvOth[0]-tvPiv[0]);
+  const startB=Math.atan2(fvOth[1]-fvPiv[1],fvOth[0]-fvPiv[0]);
+
+  // Fit everything (incl. the rightward rotation extents) into the sheet. Scale is
+  // uniform about the origin so XY (y=0) stays put; only x is recentred.
+  const xs=[pivX,fvOth[0],tvRot[0],fvRot[0],-L.HW*0.5], ys=[fvPiv[1],fvOth[1],tvPiv[1],tvOth[1]];
+  const maxX=Math.max(...xs), minX=Math.min(...xs), maxAbsY=Math.max(...ys.map(Math.abs),0.5);
+  const s=Math.min(1,(2*L.HW*0.9)/Math.max(maxX-minX,0.5),(L.HH*0.92)/maxAbsY);
+  const root=new THREE.Group(); g.add(root);
+  root.scale.set(s,s,1); root.position.set(-s*(minX+maxX)/2,0,0);
+  drawSheetViews(root,M,L);
+
+  // Part A elements
+  const rotTV=conLine(root,COL.hp,false);
+  const arcA =conLine(root,COL.locus,false);
+  const projA=conLine(root,COL.construct,true);
+  const fvLoc=conLine(root,COL.locus,true);
+  const markA=conMarker(root,bTLA[0],bTLA[1],COL.tlg,'b₁′',false,.3,.34,.0);
+  const tlA  =fatLine(root,[fvPiv[0],fvPiv[1],0,bTLA[0],bTLA[1],0],COL.tlg,LW.bold,false);
+  const thetaA=conLine(root,COL.tlg,false);
+  const dirA=Math.atan2(bTLA[1]-fvPiv[1],bTLA[0]-fvPiv[0]);
+  const thLbl=conLabel(root,fvPiv[0]+Math.cos(dirA/2)*1.15,fvPiv[1]+Math.sin(dirA/2)*1.0,COL.tlg,`θ=${M.theta.toFixed(0)}°`,.34);
+  const tlLblA=conLabel(root,(fvPiv[0]+bTLA[0])/2,(fvPiv[1]+bTLA[1])/2+.55,COL.tlg,`TL ${M.tl.toFixed(0)}`,.34);
+
+  // Part B elements
+  const rotFV=conLine(root,COL.vp,false);
+  const arcB =conLine(root,COL.locus,false);
+  const projB=conLine(root,COL.construct,true);
+  const tvLoc=conLine(root,COL.locus,true);
+  const markB=conMarker(root,bTLB[0],bTLB[1],COL.tlg,'b₁',false,.3,.34,.0);
+  const tlB  =fatLine(root,[tvPiv[0],tvPiv[1],0,bTLB[0],bTLB[1],0],COL.tlg,LW.bold,false);
+  const phiB =conLine(root,COL.tlg,false);
+  const dirB=Math.atan2(bTLB[1]-tvPiv[1],bTLB[0]-tvPiv[0]);
+  const phLbl=conLabel(root,tvPiv[0]+Math.cos(dirB/2)*1.15,tvPiv[1]+Math.sin(dirB/2)*1.0,COL.tlg,`φ=${M.phi.toFixed(0)}°`,.34);
+  const tlLblB=conLabel(root,(tvPiv[0]+bTLB[0])/2,(tvPiv[1]+bTLB[1])/2-.55,COL.tlg,`TL ${M.tl.toFixed(0)}`,.34);
+
+  const aidsA=[rotTV,arcA,projA,fvLoc], aidsB=[rotFV,arcB,projB,tvLoc];
+
+  conApply = p=>{
+    const G=p*TL_N;
+    // ---- Part A ----
+    { const t=easeOut(lc(G,0,1)), ang=startA+(0-startA)*t;
+      setSeg(rotTV,tvPiv,[tvPiv[0]+Math.cos(ang)*Lplan,tvPiv[1]+Math.sin(ang)*Lplan]); setOp(rotTV,G>0?1:0); }
+    { const t=easeOut(lc(G,1,2)); setArc(arcA,tvPiv[0],tvPiv[1],Lplan,startA,startA+(0-startA)*t); setOp(arcA,G>=1?1:0); }
+    { const t=easeOut(lc(G,2,3)); setSeg(projA,tvRot,[tvRot[0],tvRot[1]+(bTLA[1]-tvRot[1])*t]); setOp(projA,G>=2?1:0);
+      setSeg(fvLoc,[fvOth[0],fvOth[1]],[bTLA[0],fvOth[1]]); setOp(fvLoc,lc(G,2.5,3.2)); }
+    setOp(markA,lc(G,3,3.5));
+    { const t=easeOut(lc(G,4,5)); setFat(tlA,fvPiv,lerp2(fvPiv,bTLA,t)); setOp(tlA,G>=4?1:0); }
+    setArc(thetaA,fvPiv[0],fvPiv[1],0.8,0,dirA); setOp(thetaA,lc(G,5,5.4));
+    setOp(thLbl,lc(G,5,5.6)); setOp(tlLblA,lc(G,4.3,4.9));
+    // ---- Part B ----
+    { const t=easeOut(lc(G,6,7)), ang=startB+(0-startB)*t;
+      setSeg(rotFV,fvPiv,[fvPiv[0]+Math.cos(ang)*Lelev,fvPiv[1]+Math.sin(ang)*Lelev]); setOp(rotFV,G>=6?1:0); }
+    { const t=easeOut(lc(G,7,8)); setArc(arcB,fvPiv[0],fvPiv[1],Lelev,startB,startB+(0-startB)*t); setOp(arcB,G>=7?1:0); }
+    { const t=easeOut(lc(G,8,9)); setSeg(projB,fvRot,[fvRot[0],fvRot[1]+(bTLB[1]-fvRot[1])*t]); setOp(projB,G>=8?1:0);
+      setSeg(tvLoc,[tvOth[0],tvOth[1]],[bTLB[0],tvOth[1]]); setOp(tvLoc,lc(G,8.5,9.2)); }
+    setOp(markB,lc(G,9,9.5));
+    { const t=easeOut(lc(G,10,11)); setFat(tlB,tvPiv,lerp2(tvPiv,bTLB,t)); setOp(tlB,G>=10?1:0); }
+    setArc(phiB,tvPiv[0],tvPiv[1],0.8,0,dirB); setOp(phiB,lc(G,11,11.4));
+    setOp(phLbl,lc(G,11,11.6)); setOp(tlLblB,lc(G,10.3,10.9));
+    // Part B started → dim the Part A aids so the sheet stays readable
+    if(G>=6){ aidsA.forEach(o=>setOp(o,.18)); }
+    if(G< 6){ aidsB.forEach(o=>setOp(o,0)); markB.children&&setOp(markB,0); setOp(tlB,0); setOp(phiB,0); setOp(phLbl,0); setOp(tlLblB,0); }
+  };
+  conApply(0);
+}
+function applyTLState(){ const p=(tlPhase+tlPhaseT)/TL_N; conApply && conApply(p); setTLCaption(); }
+function tlLoop(now){
+  if(conMode!=='tl'||!tlPlaying) return;
+  const dt=Math.min(now-tlPrevTime,50); tlPrevTime=now;
+  tlPhaseT += dt/TL_PHASE_MS;
+  if(tlPhaseT>=1){
+    if(tlPhase>=TL_N-1){ tlPhaseT=1; tlPlaying=false; setPlayBtn(false); applyTLState(); return; }
+    tlPhase++; tlPhaseT=0;
+  }
+  applyTLState();
+  conRAF=requestAnimationFrame(tlLoop);
+}
+function playTL(){
+  if(conMode!=='tl') return;
+  // Reduced motion: no continuous play — jump to the completed construction. The
+  // learner reviews it step-by-step with the (instant) Previous / Next controls.
+  if(reduceMotion.matches){ tlPhase=TL_N-1; tlPhaseT=1; applyTLState(); return; }
+  if(tlPhase>=TL_N-1&&tlPhaseT>=1){ tlPhase=0; tlPhaseT=0; }
+  tlPlaying=true; setPlayBtn(true); tlPrevTime=performance.now(); cancelAnimationFrame(conRAF); conRAF=requestAnimationFrame(tlLoop);
+}
+function pauseTL(){ tlPlaying=false; setPlayBtn(false); cancelAnimationFrame(conRAF); }
+function stepTL(dir){
+  pauseTL();
+  if(dir>0){ if(tlPhaseT<1) tlPhaseT=1; else if(tlPhase<TL_N-1){ tlPhase++; tlPhaseT=1; } }
+  else { if(tlPhase>0){ tlPhase--; tlPhaseT=1; } else tlPhaseT=0; }
+  applyTLState();
 }
 
 // ── Geometry helpers ──────────────────────────────────────────
@@ -576,17 +972,18 @@ function swap(){
 
 // ── Sliders / readout / notes ─────────────────────────────────
 function syncUI(d,M){
-  setRange('r-tl','n-tl',d.TL,90);
-  setRange('r-th','n-th',d.theta,90);
-  setRange('r-ph','n-ph',d.phi,90);
+  setRange('r-tl','n-tl',d.TL,90, v=>`${v} centimetres true length`);
+  setRange('r-th','n-th',d.theta,90, v=>`${v} degrees, inclination with HP`);
+  setRange('r-ph','n-ph',d.phi,90, v=>`${v} degrees, inclination with VP`);
   setNote('note-valid', d.case===LineCase.INCL_BOTH && !M.valid
     ? 'θ + φ must stay ≤ 90° for a real line. Reduce one angle.' : '');
 }
-function setRange(r,n,val,max){
+function setRange(r,n,val,max,vt){
   const rEl=$(r), nEl=$(n); if(!rEl) return;
   const clamped=Math.min(max,Math.max(0,val));
   rEl.value=String(clamped);
   rEl.style.setProperty('--p',(clamped/max*100)+'%');
+  rEl.setAttribute('aria-valuetext', vt ? vt(val) : String(val));   // unit-bearing value for screen readers
   nEl.value=String(val);
 }
 const NOTE_ICO='<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none"/></svg>';
@@ -696,26 +1093,37 @@ function closeTerm(){
 
 // ── Wire up everything ────────────────────────────────────────
 function wire(){
-  $('r-tl').addEventListener('input',()=>rebuild({...data,TL:+$('r-tl').value||0}));
-  $('r-th').addEventListener('input',()=>rebuild({...data,theta:+$('r-th').value||0}));
-  $('r-ph').addEventListener('input',()=>rebuild({...data,phi:+$('r-ph').value||0}));
+  $('r-tl').addEventListener('input',()=>rebuildFromEdit({...data,TL:+$('r-tl').value||0}));
+  $('r-th').addEventListener('input',()=>rebuildFromEdit({...data,theta:+$('r-th').value||0}));
+  $('r-ph').addEventListener('input',()=>rebuildFromEdit({...data,phi:+$('r-ph').value||0}));
   [['n-tl','TL',90],['n-th','theta',90],['n-ph','phi',90]].forEach(([n,k,max])=>{
     $(n).addEventListener('change',()=>{
       const val=parseFloat($(n).value);
       if(!isFinite(val)||val<0){ syncUI(data,resolveLine(data)); }
-      else rebuild({...data,[k]:Math.min(max,val)});
+      else rebuildFromEdit({...data,[k]:Math.min(max,val)});
     });
   });
 
   const toggle=(id,get,set)=>{
     const el=$(id);
-    el.addEventListener('click',()=>{ set(!get()); el.classList.toggle('on',get()); el.setAttribute('aria-pressed',String(get())); rebuild(data); });
+    el.addEventListener('click',()=>{ set(!get()); el.classList.toggle('on',get()); el.setAttribute('aria-pressed',String(get())); rebuildFromEdit(data); });
   };
   toggle('tg-lbl',()=>tLabels,v=>tLabels=v);
   toggle('tg-dim',()=>tDims,v=>tDims=v);
   toggle('tg-proj',()=>tProj,v=>tProj=v);
 
   $('btn-fold').addEventListener('click',runFold);
+
+  // Traces (HT/VT)
+  $('btn-traces').addEventListener('click',()=> conMode==='trace' ? exitCon() : enterTrace());
+  $('trace-replay').addEventListener('click',()=>{ if(conMode==='trace'){ reduceMotion.matches ? conApply(1) : runConAnim(5400); } });
+  // True Length & Angles (Rotating-Line method) + playback transport
+  $('btn-tl').addEventListener('click',()=> conMode==='tl' ? exitCon() : enterTL());
+  $('tl-play').addEventListener('click',()=>{ if(conMode!=='tl') return; tlPlaying ? pauseTL() : playTL(); });
+  $('tl-next').addEventListener('click',()=>{ if(conMode==='tl') stepTL(1); });
+  $('tl-prev').addEventListener('click',()=>{ if(conMode==='tl') stepTL(-1); });
+  $('tl-replay').addEventListener('click',()=>{ if(conMode!=='tl') return; tlPhase=0; tlPhaseT=0; applyTLState(); playTL(); });
+
   $('btn-reset').addEventListener('click',()=>window.simAPI.reset());
   $('btn-next').addEventListener('click',goNext);
   $('btn-back').addEventListener('click',goBack);

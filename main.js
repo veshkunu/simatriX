@@ -161,7 +161,8 @@ function draw3D(g,p,d,r,v){
   apl(g,S,COL.vp,.07,new THREE.Euler(0,0,0));                  // VP wall  (XY, z=0)
   alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
   asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);                       // fold line (X-axis)
-  alb(g,'HP',3.4,-.45,1.1,COL.hp,2.0,.78); alb(g,'VP',-3.1,3.4,.06,COL.vp,2.0,.78);
+  alb(g,'HP',-3.6,-.3,3.6,COL.hp,2.0,.78); alb(g,'VP',-3.6,3.7,.05,COL.vp,2.0,.78);
+  alb(g,'XY',S/2-.5,-.35,0,COL.ink,1.0,.5);                    // label the fold line (matches Lines)
 
   if(v.showQuad){
     [{t:'I',x:.25,y:2.7,z:2.7,q:'Q1'},{t:'II',x:.25,y:2.7,z:-2.7,q:'Q2'},
@@ -197,7 +198,7 @@ function draw2D(g,p,d,r,v){
   alp(g,[[-hw,-hh,0],[hw,-hh,0],[hw,hh,0],[-hw,hh,0]],COL.border);
   asg(g,[-hw,0,0],[hw,0,0],COL.ink,0);
   alb(g,'x',-hw+.55,.38,0,COL.ink,.85,.72,false,128); alb(g,'y',hw-.55,.38,0,COL.ink,.85,.72,false,128);
-  alb(g,'VP',-hw+1.1,.90,0,COL.vp,1.6,.92,false,128); alb(g,'HP',-hw+1.1,-.90,0,COL.hp,1.6,.92,false,128);
+  alb(g,'VP',-hw+1.1,2.8,0,COL.vp,1.6,.92,false,128); alb(g,'HP',-hw+1.1,-2.8,0,COL.hp,1.6,.92,false,128);
 
   if(!(v.showHP && v.showVP)){
     alb(g,'Top & front views appear here',0,0,0,COL.bench,4.4,.42);
@@ -296,7 +297,7 @@ function buildAnimScene(){
   // VP — XY plane (z=0), stationary
   apl(g,S,COL.vp,.07,new THREE.Euler(0,0,0));
   alp(g,[[-S/2,-S/2,0],[S/2,-S/2,0],[S/2,S/2,0],[-S/2,S/2,0]],COL.vp);
-  alb(g,'VP',-3.1,3.4,.06,COL.vp,2.0,.78);
+  alb(g,'VP',-3.6,3.7,.05,COL.vp,2.0,.78);
   asg(g,[-S/2,0,0],[S/2,0,0],COL.ink,0);                     // fold line (hinge)
 
   // p′ on VP (stays in z=0): connector, cross, label — KEEP
@@ -315,7 +316,7 @@ function buildAnimScene(){
     new THREE.MeshBasicMaterial({color:new THREE.Color(COL.hp),transparent:true,opacity:.10,side:THREE.DoubleSide,depthWrite:false}));
   hpMesh.rotation.x=-Math.PI/2; hpGroup.add(hpMesh);
   alp(hpGroup,[[-S/2,0,-S/2],[S/2,0,-S/2],[S/2,0,S/2],[-S/2,0,S/2]],COL.hp);
-  alb(hpGroup,'HP',3.4,-.45,1.1,COL.hp,2.0,.78);
+  alb(hpGroup,'HP',-3.6,-.3,3.6,COL.hp,2.0,.78);
   acr(hpGroup,ax,0,az,.14,COL.hp,true);
   albBox(hpGroup,'p',ax+.3,.24,az,COL.hp,.3);
   asg(hpGroup,[ax,0,az],[ax,0,0],COL.hp,0);                  // foot → fold line (in HP)

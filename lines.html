@@ -59,6 +59,13 @@
   --ink:#221f18; --ink2:#564e3c; --bench:#938b7b;
   --border:#d9d2c3; --track:#cfc8b8;
   --hp:#007f7c; --vp:#bc5d1e;
+  /* Construction-aid colours (used only by the Traces + True-Length overlays —
+     they do not restyle the existing theme). HT reuses HP teal, VT reuses VP amber. */
+  --construct:#8a8275; --locus:#7b4fb5; --tl-green:#1f8a4c;
+  /* Darker, AA-clearing variants of each hue for *small inline text* in the side
+     panels (the bright values above stay for linework + colour-sample swatches).
+     All clear 4.5:1 on the --panel / --paper surfaces. */
+  --hp-ink:#00706c; --vp-ink:#9c4a14; --construct-ink:#5e564a; --locus-ink:#6a3fa3; --tl-green-ink:#166b3c;
   --success:#2e7d52; --success-soft:#e2efe8;
   --r-xs:4px; --r-sm:6px; --r-md:10px;
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
@@ -191,6 +198,30 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 .ctrl-note{display:flex;gap:var(--s2);align-items:flex-start;margin-top:var(--s2);font-size:.8125rem;line-height:1.45;color:var(--ink2)}
 .ctrl-note[hidden]{display:none}
 .ctrl-note .ico{flex:none;width:15px;height:15px;margin-top:1px;color:var(--ink2)}
+
+/* Construction overlays — Traces + True-Length panels (reuse the existing language) */
+#traces-panel,#tl-panel{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s3)}
+#traces-panel[hidden],#tl-panel[hidden]{display:none}
+.con-cap{margin:0;font-size:.9375rem;font-weight:700;line-height:1.4;color:var(--ink);
+  background:var(--accent-soft);border-radius:var(--r-sm);padding:var(--s2) var(--s3)}
+.tl-step{margin:0;font:500 .8125rem/1.4 var(--mono);color:var(--ink2)}
+.con-note{display:flex;flex-direction:column;gap:var(--s2);margin:0;font-size:.8125rem;line-height:1.5;color:var(--ink2)}
+.con-note p{margin:0}
+.con-note b{color:var(--ink)}
+.con-rules{padding-top:var(--s1);border-top:1px solid var(--border)}
+.sw-hp{color:var(--hp-ink)} .sw-vp{color:var(--vp-ink)}
+.sw-construct{color:var(--construct-ink)} .sw-locus{color:var(--locus-ink)} .sw-tl{color:var(--tl-green-ink);font-weight:700}
+.pb-row{display:flex;gap:var(--s2)}
+.pb-btn{flex:1;min-height:40px;padding:0 var(--s2);font-size:1rem}
+.con-legend{list-style:none;margin:0;padding:var(--s1) 0 0;display:flex;flex-direction:column;gap:var(--s1);
+  font-size:.8125rem;line-height:1.4;color:var(--ink2);border-top:1px solid var(--border)}
+.con-legend li{display:flex;align-items:center;gap:var(--s2)}
+.con-legend .lg{flex:none;width:16px;height:16px;display:inline-block}
+.con-legend .lg-ht{border:2px solid var(--hp);border-radius:50%;width:13px;height:13px}
+.con-legend .lg-vt{border:2px solid var(--vp);border-radius:50%;width:13px;height:13px}
+.con-legend .lg-pt{width:7px;height:7px;border-radius:50%;background:var(--ink)}
+.con-legend .lg-perp{font:700 .9rem/1 var(--mono);color:var(--construct-ink);width:auto}
+.con-legend .lg-dash{height:0;border-top:2px dashed var(--construct)}
 
 .hint{
   display:flex;gap:var(--s2);align-items:flex-start;
@@ -368,6 +399,51 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 
       <div class="ctrl" data-ctrl="fold" hidden>
         <button id="btn-fold" class="btn btn-primary" style="width:100%">▶ Generate Orthographic Projection</button>
+      </div>
+
+      <!-- TRACES (HT / VT) — available on every line-position step -->
+      <div class="ctrl" data-ctrl="traces" hidden>
+        <button id="btn-traces" class="btn btn-secondary" style="width:100%" aria-expanded="false" aria-controls="traces-panel">⊹ Show Traces (HT &amp; VT)</button>
+        <div id="traces-panel" hidden>
+          <p class="con-cap" id="trace-cap" role="status" aria-live="polite">Finding the traces…</p>
+          <div class="pb-row">
+            <button id="trace-replay" class="btn btn-secondary pb-btn" title="Replay">↺ Replay</button>
+          </div>
+          <div class="con-note">
+            <p><b>A trace</b> is the point where a line (or its extension) meets a reference plane.</p>
+            <p><b class="sw-hp">HT</b> (Horizontal Trace): where the line meets HP. Extend the <b>front view</b> to XY at <b>h</b>, then project down to the top view.</p>
+            <p><b class="sw-vp">VT</b> (Vertical Trace): where the line meets VP. Extend the <b>top view</b> to XY at <b>v</b>, then project up to the front view.</p>
+            <ul class="con-legend">
+              <li><span class="lg lg-ht"></span> <b class="sw-hp">HT</b> = Horizontal Trace</li>
+              <li><span class="lg lg-vt"></span> <b class="sw-vp">VT</b> = Vertical Trace</li>
+              <li><span class="lg lg-pt"></span> <b>h</b> = front view meets XY</li>
+              <li><span class="lg lg-pt"></span> <b>v</b> = top view meets XY</li>
+              <li><span class="lg lg-perp">⊥</span> perpendicular projector</li>
+              <li><span class="lg lg-dash"></span> dashed = construction / extension</li>
+            </ul>
+            <p class="con-rules"><b>Rules:</b> ∥ to a plane → no trace on it · ⟂ to a plane → trace coincides with the projection point · <b>h</b> and <b>v</b> always lie on XY.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRUE LENGTH & ANGLES (Rotating-Line method) — inclined-to-both only -->
+      <div class="ctrl" data-ctrl="truelength" hidden>
+        <button id="btn-tl" class="btn btn-secondary" style="width:100%" aria-expanded="false" aria-controls="tl-panel">∡ True Length &amp; Angles</button>
+        <div id="tl-panel" hidden>
+          <p class="con-cap" id="tl-cap" role="status" aria-live="polite"></p>
+          <p class="tl-step" id="tl-step"></p>
+          <div class="pb-row" role="group" aria-label="Construction playback">
+            <button id="tl-prev"   class="btn btn-secondary pb-btn" title="Previous step" aria-label="Previous step">⏮</button>
+            <button id="tl-play"   class="btn btn-primary  pb-btn" title="Play / Pause" aria-label="Play construction" aria-pressed="false">▶</button>
+            <button id="tl-next"   class="btn btn-secondary pb-btn" title="Next step" aria-label="Next step">⏭</button>
+            <button id="tl-replay" class="btn btn-secondary pb-btn" title="Replay" aria-label="Replay construction">↺</button>
+          </div>
+          <div class="con-note">
+            <p>When a line is inclined to <b>both</b> planes, neither projection shows the true length. The <b>Rotating-Line method</b> swings each view parallel to XY to reveal it.</p>
+            <p><span class="sw-tl">Part A</span> rotates the <b>top view</b> → True Length &amp; <b class="sw-hp">θ</b> (with HP). <span class="sw-tl">Part B</span> rotates the <b>front view</b> → True Length &amp; <b class="sw-vp">φ</b> (with VP).</p>
+            <p class="con-rules"><span class="sw-construct">construction</span> · <span class="sw-locus">locus</span> · <span class="sw-tl">true length</span></p>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -30,7 +30,7 @@ export const STEPS = [
     ],
     hint: 'Drag the True Length slider — both views grow together and always match TL.',
     set: { case: LineCase.PARALLEL_BOTH },
-    controls: ['tl', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'readout', 'fold', 'toggles', 'traces'],
     view: { showLine: true, showFV: true, showTV: true },
   },
   {
@@ -42,7 +42,7 @@ export const STEPS = [
       `The ${T('tv','top view')} shows the full ${T('tl','true length')}, perpendicular to XY.`,
     ],
     set: { case: LineCase.PERP_VP },
-    controls: ['tl', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'readout', 'fold', 'toggles', 'traces'],
     view: { showLine: true, showFV: true, showTV: true },
   },
   {
@@ -54,7 +54,7 @@ export const STEPS = [
       `The ${T('fv','front view')} stands vertical and shows the full ${T('tl','true length')}.`,
     ],
     set: { case: LineCase.PERP_HP },
-    controls: ['tl', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'readout', 'fold', 'toggles', 'traces'],
     view: { showLine: true, showFV: true, showTV: true },
   },
   {
@@ -67,7 +67,7 @@ export const STEPS = [
     ],
     hint: 'Slide θ from 0° to 90°: the front view pivots at true angle; the top view shrinks to TL·cos θ.',
     set: { case: LineCase.INCL_HP },
-    controls: ['tl', 'theta', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'theta', 'readout', 'fold', 'toggles', 'traces'],
     view: { showLine: true, showFV: true, showTV: true },
   },
   {
@@ -80,7 +80,7 @@ export const STEPS = [
     ],
     hint: 'Slide φ: the top view holds true length and angle; the front view shortens to TL·cos φ.',
     set: { case: LineCase.INCL_VP },
-    controls: ['tl', 'phi', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'phi', 'readout', 'fold', 'toggles', 'traces'],
     view: { showLine: true, showFV: true, showTV: true },
   },
   {
@@ -93,7 +93,7 @@ export const STEPS = [
     ],
     hint: 'A line is valid only while θ + φ ≤ 90°. Watch α and β stay above θ and φ as you tilt.',
     set: { case: LineCase.INCL_BOTH },
-    controls: ['tl', 'theta', 'phi', 'readout', 'fold', 'toggles'],
+    controls: ['tl', 'theta', 'phi', 'readout', 'fold', 'toggles', 'traces', 'truelength'],
     view: { showLine: true, showFV: true, showTV: true },
   },
 ];
@@ -112,4 +112,8 @@ export const TERMS = {
   alpha:{ label: 'α — apparent angle of FV', def: 'The angle the front view makes with XY in the drawing. Always ≥ θ.' },
   beta: { label: 'β — apparent angle of TV', def: 'The angle the top view makes with XY in the drawing. Always ≥ φ.' },
   projector: { label: 'Projector', def: 'A thin construction line dropped perpendicular from a point in space to a plane.' },
+  trace:{ label: 'Trace', def: 'The point where a line — or its extension — meets a reference plane.' },
+  ht:   { label: 'Horizontal Trace (HT)', def: 'Where the line (or its extension) meets HP. Found by extending the front view to XY at h, then projecting down to the top view.' },
+  vt:   { label: 'Vertical Trace (VT)', def: 'Where the line (or its extension) meets VP. Found by extending the top view to XY at v, then projecting up to the front view.' },
+  locus:{ label: 'Locus', def: 'The path traced by a point as the line is rotated — here, the horizontal line a rotated endpoint must stay on.' },
 };
