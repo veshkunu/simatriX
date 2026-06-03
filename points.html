@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Projection of Straight Lines · Simatrix</title>
+<title>Projection of Points · Simatrix</title>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,7 @@
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 
-<!-- Boot diagnostic: turns a blank page into an actionable message. Self-removed by lines.js on success. -->
+<!-- Boot diagnostic: turns a blank page into an actionable message. Self-removed by main.js on success. -->
 <script>
 (function(){
   function overlay(title, detail){
@@ -38,7 +38,7 @@
     if(location.protocol==='file:'){
       overlay('Open this through a web server, not a file',
         'This page is open as a '+code('file://')+' URL, which browsers block from loading ES modules, so nothing runs and the page stays blank.<br><br>'
-        +'Serve the folder over HTTP instead. With XAMPP started, open:<br><br>'+code('http://localhost/module1/lines.html'));
+        +'Serve the folder over HTTP instead. With XAMPP started, open:<br><br>'+code('http://localhost/module1/'));
     } else {
       overlay('The simulation didn’t finish loading',
         'The page loaded but the 3D module didn’t initialise.<br><br>'
@@ -51,26 +51,28 @@
 
 <style>
 /* ─────────────────────────────────────────────────────────────
-   DESIGN TOKENS — identical to the Projection of Points module.
+   DESIGN TOKENS — mirror DESIGN.shared.md. Never hard-code values
+   elsewhere; CSS and JS read these custom properties.
    ───────────────────────────────────────────────────────────── */
 :root{
+  /* guidance accent (chrome only — never inside the viewport) */
   --accent:#1f66b5; --accent-strong:#17539b; --accent-soft:#e3ecf7;
+  /* neutrals */
   --paper:#faf8f3; --panel:#efebe1; --geometry-fill:#e7e1d4;
   --ink:#221f18; --ink2:#564e3c; --bench:#938b7b;
   --border:#d9d2c3; --track:#cfc8b8;
+  /* functional viewport encodings */
   --hp:#007f7c; --vp:#bc5d1e;
-  /* Construction-aid colours (used only by the Traces + True-Length overlays —
-     they do not restyle the existing theme). HT reuses HP teal, VT reuses VP amber. */
-  --construct:#8a8275; --locus:#7b4fb5; --tl-green:#1f8a4c;
-  /* Darker, AA-clearing variants of each hue for *small inline text* in the side
-     panels (the bright values above stay for linework + colour-sample swatches).
-     All clear 4.5:1 on the --panel / --paper surfaces. */
-  --hp-ink:#00706c; --vp-ink:#9c4a14; --construct-ink:#5e564a; --locus-ink:#6a3fa3; --tl-green-ink:#166b3c;
+  /* status */
   --success:#2e7d52; --success-soft:#e2efe8;
+  /* radii */
   --r-xs:4px; --r-sm:6px; --r-md:10px;
+  /* spacing */
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  /* type */
   --font:"Atkinson Hyperlegible",system-ui,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,monospace;
+  /* elevation */
   --shadow-overlay:0 4px 16px color-mix(in srgb,var(--ink) 12%,transparent);
   --halo:0 0 0 3px color-mix(in srgb,var(--accent) 26%,transparent);
 }
@@ -83,19 +85,28 @@ body{
   color:var(--ink);background:var(--paper);
   -webkit-font-smoothing:antialiased;
 }
+
+/* Visible focus ring everywhere; never removed. */
 :focus-visible{outline:none;box-shadow:var(--halo);border-radius:var(--r-xs)}
+
+/* Screen-reader only */
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
-/* STEPPER PANEL — on the RIGHT, scrollbar hidden (matches Points module) */
+/* ─────────────────────────────────────────────────────────────
+   STEPPER PANEL (the wizard) — quiet chrome, paper/panel tones
+   ───────────────────────────────────────────────────────────── */
 #stepper{
-  flex:0 0 348px;height:100%;overflow-y:auto;order:2;
+  flex:0 0 348px;height:100%;overflow-y:auto;order:2;        /* order:2 → panel sits on the RIGHT */
   background:var(--panel);border-left:1px solid var(--border);
   padding:var(--s5) var(--s4) var(--s4);
   display:flex;flex-direction:column;gap:var(--s5);
-  scrollbar-width:none;-ms-overflow-style:none;
+  scrollbar-width:none;-ms-overflow-style:none;              /* hide scrollbar (Firefox / old Edge) */
 }
-#stepper::-webkit-scrollbar{width:0;height:0;display:none}
-.brand{font-size:.75rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);margin:0}
+#stepper::-webkit-scrollbar{width:0;height:0;display:none}   /* hide scrollbar (WebKit/Chrome) */
+.brand{
+  font-size:.75rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink2);margin:0;
+}
 .brand span{color:var(--accent)}
 
 /* Chapter switcher — links the two modules (same pill language as the toggle bar) */
@@ -105,6 +116,7 @@ body{
 .chap.on{background:var(--accent);color:var(--paper);border-color:var(--accent)}
 .chap:focus-visible{box-shadow:var(--halo)}
 
+/* Step rail (signature) */
 .rail{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s1)}
 .rail-item{
   width:100%;display:flex;align-items:center;gap:var(--s3);
@@ -116,7 +128,8 @@ body{
 .rail-item[disabled]{cursor:default;opacity:.55}
 .disc{
   flex:none;width:24px;height:24px;border-radius:50%;
-  display:grid;place-items:center;font:500 .75rem/1 var(--mono);
+  display:grid;place-items:center;
+  font:500 .75rem/1 var(--mono);
   border:1.5px solid var(--bench);color:var(--bench);background:transparent;
 }
 .rail-item.done .disc{background:var(--success);border-color:var(--success);color:var(--paper)}
@@ -126,6 +139,7 @@ body{
 
 .divider{height:1px;background:var(--border);border:0;margin:0}
 
+/* Step card */
 .step-card{
   background:var(--paper);border:1px solid var(--border);border-radius:var(--r-md);
   padding:var(--s5) var(--s4);
@@ -140,21 +154,25 @@ body{
 .step-body p{margin:0;font-size:1rem;line-height:1.6}
 .step-body b{font-weight:700}
 
+/* Inline term definition (signature): dotted-underline accent button */
 .term{
   font:inherit;color:var(--accent);background:none;border:0;padding:0;cursor:help;
   text-decoration:underline dotted;text-underline-offset:3px;text-decoration-thickness:1.5px;
 }
 .term:hover{color:var(--accent-strong)}
 
+/* Revealed controls */
 .controls{display:flex;flex-direction:column;gap:var(--s4)}
 .controls:empty{display:none}
 .ctrl[hidden]{display:none}
 .ctrl-label{display:block;font-size:.875rem;font-weight:400;color:var(--ink);margin-bottom:var(--s1)}
 .ctrl-row{display:flex;align-items:center;gap:var(--s3);min-height:44px}
 
+/* Slider — 4px groove, accent fill, 16px knob, 44px hit row */
 input[type=range]{
   -webkit-appearance:none;appearance:none;
-  flex:1;height:44px;background:transparent;cursor:pointer;margin:0;--p:0%;
+  flex:1;height:44px;background:transparent;cursor:pointer;margin:0;
+  --p:0%;
 }
 input[type=range]::-webkit-slider-runnable-track{
   height:4px;border-radius:999px;
@@ -162,7 +180,8 @@ input[type=range]::-webkit-slider-runnable-track{
 }
 input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;width:16px;height:16px;border-radius:50%;margin-top:-6px;
-  background:var(--accent);border:1px solid var(--accent-strong);box-shadow:0 0 0 2px var(--paper);
+  background:var(--accent);border:1px solid var(--accent-strong);
+  box-shadow:0 0 0 2px var(--paper);
 }
 input[type=range]:hover::-webkit-slider-thumb,
 input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--paper),var(--halo)}
@@ -174,6 +193,7 @@ input[type=range]::-moz-range-thumb{
 input[type=range]:focus-visible{box-shadow:none}
 input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--paper),var(--halo)}
 
+/* Numeric input / select */
 .num{
   width:74px;flex:none;padding:var(--s2);text-align:right;
   font:400 .875rem/1.2 var(--mono);font-variant-numeric:tabular-nums;
@@ -182,47 +202,28 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 }
 .unit{font:400 .875rem/1.2 var(--mono);color:var(--ink2)}
 
-/* Live readout table (TL / view lengths / angles) */
-.readout{width:100%;border-collapse:collapse;font:400 .8125rem/1.35 var(--mono);font-variant-numeric:tabular-nums}
-.readout td{padding:var(--s1) var(--s2);border-bottom:1px solid var(--border)}
-.readout tr:last-child td{border-bottom:0}
-.readout td:first-child{color:var(--ink2)}
-.readout td:last-child{text-align:right;color:var(--ink);font-weight:500}
-.readout tr.hot td{color:var(--accent)}
-
-/* Show/Hide toggle buttons */
-.tgls{display:flex;gap:var(--s2)}
-.tgls .btn{flex:1;min-height:38px;padding:0 var(--s2);font-size:.8125rem}
-.btn.on{background:var(--accent);color:var(--paper);border-color:var(--accent);font-weight:700}
-
+/* Inline control feedback — validation + over-slider-range notes. Neutral and
+   plain-spoken, not alarming; the encouraging-tutor voice holds even for errors. */
 .ctrl-note{display:flex;gap:var(--s2);align-items:flex-start;margin-top:var(--s2);font-size:.8125rem;line-height:1.45;color:var(--ink2)}
 .ctrl-note[hidden]{display:none}
 .ctrl-note .ico{flex:none;width:15px;height:15px;margin-top:1px;color:var(--ink2)}
+select{
+  width:100%;min-height:44px;padding:0 var(--s3);
+  font:inherit;color:var(--ink);background:var(--paper);
+  border:1px solid var(--border);border-radius:var(--r-xs);cursor:pointer;
+  appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink2) 50%),linear-gradient(135deg,var(--ink2) 50%,transparent 50%);
+  background-position:calc(100% - 18px) center,calc(100% - 13px) center;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;
+}
 
-/* Construction overlays — Traces + True-Length panels (reuse the existing language) */
-#traces-panel,#tl-panel{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s3)}
-#traces-panel[hidden],#tl-panel[hidden]{display:none}
-.con-cap{margin:0;font-size:.9375rem;font-weight:700;line-height:1.4;color:var(--ink);
-  background:var(--accent-soft);border-radius:var(--r-sm);padding:var(--s2) var(--s3)}
-.tl-step{margin:0;font:500 .8125rem/1.4 var(--mono);color:var(--ink2)}
-.con-note{display:flex;flex-direction:column;gap:var(--s2);margin:0;font-size:.8125rem;line-height:1.5;color:var(--ink2)}
-.con-note p{margin:0}
-.con-note b{color:var(--ink)}
-.con-rules{padding-top:var(--s1);border-top:1px solid var(--border)}
-.sw-hp{color:var(--hp-ink)} .sw-vp{color:var(--vp-ink)}
-.sw-construct{color:var(--construct-ink)} .sw-locus{color:var(--locus-ink)} .sw-tl{color:var(--tl-green-ink);font-weight:700}
-.pb-row{display:flex;gap:var(--s2)}
-.pb-btn{flex:1;min-height:40px;padding:0 var(--s2);font-size:1rem}
-.con-legend{list-style:none;margin:0;padding:var(--s1) 0 0;display:flex;flex-direction:column;gap:var(--s1);
-  font-size:.8125rem;line-height:1.4;color:var(--ink2);border-top:1px solid var(--border)}
-.con-legend li{display:flex;align-items:center;gap:var(--s2)}
-.con-legend .lg{flex:none;width:16px;height:16px;display:inline-block}
-.con-legend .lg-ht{border:2px solid var(--hp);border-radius:50%;width:13px;height:13px}
-.con-legend .lg-vt{border:2px solid var(--vp);border-radius:50%;width:13px;height:13px}
-.con-legend .lg-pt{width:7px;height:7px;border-radius:50%;background:var(--ink)}
-.con-legend .lg-perp{font:700 .9rem/1 var(--mono);color:var(--construct-ink);width:auto}
-.con-legend .lg-dash{height:0;border-top:2px dashed var(--construct)}
+/* Quadrant reference table */
+.qt{width:100%;border-collapse:collapse;font:400 .8125rem/1.2 var(--mono);font-variant-numeric:tabular-nums}
+.qt th,.qt td{padding:var(--s1) var(--s2);border:1px solid var(--border);text-align:center}
+.qt th{background:var(--paper);font-weight:700;color:var(--ink2)}
+.qt tr.qa td{color:var(--accent);font-weight:700;background:var(--accent-soft)}
 
+/* Hint callout — full wash, leading icon, never a side stripe */
 .hint{
   display:flex;gap:var(--s2);align-items:flex-start;
   background:var(--accent-soft);color:var(--ink);
@@ -231,6 +232,7 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 .hint[hidden]{display:none}
 .hint .ico{flex:none;width:18px;height:18px;color:var(--accent)}
 
+/* Buttons */
 .btn{
   font:inherit;min-height:44px;padding:0 var(--s4);cursor:pointer;
   border-radius:var(--r-sm);border:1px solid transparent;
@@ -245,10 +247,14 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 .btn-ghost{background:transparent;color:var(--ink2);border-color:transparent}
 .btn-ghost:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 6%,transparent)}
 
+/* Step navigation + panel footer */
 .step-nav{display:flex;align-items:center;gap:var(--s2)}
 .step-nav .btn{flex:1}
 .panel-foot{margin-top:auto;display:flex;justify-content:flex-end;padding-top:var(--s2)}
 
+/* ─────────────────────────────────────────────────────────────
+   VIEWPORT — loud subject. Canvas sizing is JS-controlled.
+   ───────────────────────────────────────────────────────────── */
 #vp{flex:1 1 0;display:flex;flex-direction:column;min-width:0;background:var(--paper)}
 #canvas-area{flex:1 1 0;position:relative;overflow:hidden;min-height:0}
 #c3d,#c2d{position:absolute;display:block}
@@ -266,6 +272,7 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
   padding:2px 10px;white-space:nowrap;pointer-events:none;
 }
 
+/* One-time orbit hint chip (3D) */
 #orbit-hint{
   position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
   display:none;align-items:center;gap:var(--s2);z-index:25;
@@ -275,6 +282,7 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 }
 #orbit-hint.show{display:inline-flex}
 
+/* Toggle bar (3D / 2D) — accent marks the active pane (chrome guidance) */
 #tbar{flex:0 0 48px;display:flex;align-items:center;justify-content:center;gap:var(--s2);background:var(--panel);border-top:1px solid var(--border)}
 .tb{
   font:inherit;font-size:.875rem;min-height:36px;padding:0 var(--s5);
@@ -285,15 +293,18 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 .tb.on{background:var(--accent);color:var(--paper);border-color:var(--accent);font-weight:700}
 #tlbl{font-size:.8125rem;color:var(--ink2)}
 
+/* Term popover (signature) — fixed so it escapes the card scroll clip */
 #term-pop{
   position:fixed;z-index:60;max-width:280px;display:none;
   background:var(--accent-soft);color:var(--ink);
   border:1px solid var(--border);border-radius:var(--r-sm);
-  box-shadow:var(--shadow-overlay);padding:var(--s3);font-size:.875rem;line-height:1.45;
+  box-shadow:var(--shadow-overlay);
+  padding:var(--s3);font-size:.875rem;line-height:1.45;
 }
 #term-pop.show{display:block}
 #term-pop .pt{font-weight:700;display:block;margin-bottom:2px}
 
+/* Mobile notice */
 #mobile-note{
   position:fixed;inset:auto 12px 12px 12px;z-index:80;display:none;
   background:var(--paper);border:1px solid var(--border);border-radius:var(--r-md);
@@ -302,23 +313,38 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 }
 #mobile-note button{flex:none}
 
+/* ─────────────────────────────────────────────────────────────
+   MOBILE / NARROW (≤768px) — stack the lesson under a pinned viewport.
+   The 3D/2D view stays at the top of the screen while the step card
+   scrolls beneath it, so adjusting a control never hides the result.
+   Canvas pixel sizing stays JS-owned (layout()); CSS only sets the
+   area's box. The PiP is dropped here — the toggle bar is the switcher.
+   ───────────────────────────────────────────────────────────── */
 @media(max-width:768px){
   html{height:auto}
   body{flex-direction:column;height:auto;min-height:100%;overflow:visible}
+
+  /* Flat-Ink rule: the pinned viewport separates from the scrolling lesson by a
+     hairline plus the paper→panel tonal seam, not a shadow (shadows are for
+     transient overlays only). */
   #vp{
     order:-1;position:sticky;top:0;z-index:30;flex:none;
-    height:clamp(280px,46vh,440px);border-bottom:1px solid var(--border);
+    height:clamp(280px,46vh,440px);
+    border-bottom:1px solid var(--border);
   }
   #tbar{flex:0 0 52px}
   .tb{min-height:44px}
   #pip-box{display:none}
+
   #stepper{
     flex:none;width:100%;height:auto;overflow:visible;
     border-left:0;padding:var(--s4) var(--s4) var(--s6);gap:var(--s4);
   }
+
   #mobile-note{display:flex}
 }
 
+/* Reduced motion: collapse all transitions/animations to instant. */
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
 }
@@ -328,11 +354,11 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
 
 <!-- ════════ STEPPER PANEL ════════ -->
 <aside id="stepper">
-  <p class="brand">Simatrix <span>·</span> Projection of Straight Lines</p>
+  <p class="brand">Simatrix <span>·</span> Projection of Points</p>
 
   <nav class="chapnav" aria-label="Chapters">
-    <a href="./points.html" class="chap">Points</a>
-    <a href="./lines.html" class="chap on" aria-current="page">Lines</a>
+    <a href="./index.html" class="chap on" aria-current="page">Points</a>
+    <a href="./lines.html" class="chap">Lines</a>
   </nav>
 
   <ol class="rail" id="rail" aria-label="Lesson steps"></ol>
@@ -340,110 +366,64 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
   <hr class="divider"/>
 
   <section class="step-card" aria-live="off">
-    <p class="eyebrow" id="eyebrow">Step 1 of 7</p>
+    <p class="eyebrow" id="eyebrow">Step 1 of 6</p>
     <h1 class="step-title" id="step-title"></h1>
     <p class="step-lead" id="step-lead"></p>
     <div class="step-body" id="step-body"></div>
 
-    <!-- Static control wrappers; lines.js shows only those the step needs -->
+    <!-- Static control wrappers; main.js shows only those the step needs -->
     <div class="controls" id="controls">
-      <div class="ctrl" data-ctrl="tl" hidden>
-        <label class="ctrl-label" for="r-tl">True Length</label>
-        <div class="ctrl-row">
-          <input type="range" id="r-tl" min="20" max="90" step="1" aria-label="True length in centimetres"/>
-          <input type="text" class="num" id="n-tl" inputmode="decimal" aria-label="True length, type a value"/>
-          <span class="unit">cm</span>
-        </div>
-      </div>
-
-      <div class="ctrl" data-ctrl="theta" hidden>
-        <label class="ctrl-label" for="r-th">θ — inclination with HP</label>
-        <div class="ctrl-row">
-          <input type="range" id="r-th" min="0" max="90" step="1" aria-label="Inclination with HP in degrees"/>
-          <input type="text" class="num" id="n-th" inputmode="decimal" aria-label="Inclination with HP, type a value"/>
-          <span class="unit">°</span>
-        </div>
-      </div>
-
-      <div class="ctrl" data-ctrl="phi" hidden>
-        <label class="ctrl-label" for="r-ph">φ — inclination with VP</label>
-        <div class="ctrl-row">
-          <input type="range" id="r-ph" min="0" max="90" step="1" aria-label="Inclination with VP in degrees"/>
-          <input type="text" class="num" id="n-ph" inputmode="decimal" aria-label="Inclination with VP, type a value"/>
-          <span class="unit">°</span>
-        </div>
-        <small class="ctrl-note" id="note-valid" role="status" hidden></small>
-      </div>
-
-      <div class="ctrl" data-ctrl="readout" hidden>
-        <table class="readout" aria-label="Live measurements">
+      <div class="ctrl" data-ctrl="quad" hidden>
+        <label class="ctrl-label" for="sel-q">Quadrant</label>
+        <select id="sel-q" aria-label="Quadrant">
+          <option value="Q1">I: above HP, in front of VP</option>
+          <option value="Q2">II: above HP, behind VP</option>
+          <option value="Q3">III: below HP, behind VP</option>
+          <option value="Q4">IV: below HP, in front of VP</option>
+        </select>
+        <table class="qt" style="margin-top:var(--s2)">
+          <thead><tr><th>Q</th><th>HP</th><th>VP</th></tr></thead>
           <tbody>
-            <tr><td>True length</td><td id="val-tl">—</td></tr>
-            <tr><td>Front view (elevation)</td><td id="val-fv">—</td></tr>
-            <tr><td>Top view (plan)</td><td id="val-tv">—</td></tr>
-            <tr><td>θ — true ∠ HP</td><td id="val-th">—</td></tr>
-            <tr><td>φ — true ∠ VP</td><td id="val-ph">—</td></tr>
-            <tr id="row-al"><td>α — apparent ∠ FV</td><td id="val-al">—</td></tr>
-            <tr id="row-be"><td>β — apparent ∠ TV</td><td id="val-be">—</td></tr>
+            <tr id="qr-Q1"><td>I</td><td>Above</td><td>In front</td></tr>
+            <tr id="qr-Q2"><td>II</td><td>Above</td><td>Behind</td></tr>
+            <tr id="qr-Q3"><td>III</td><td>Below</td><td>Behind</td></tr>
+            <tr id="qr-Q4"><td>IV</td><td>Below</td><td>In front</td></tr>
           </tbody>
         </table>
       </div>
 
-      <div class="ctrl" data-ctrl="toggles" hidden>
-        <div class="tgls">
-          <button id="tg-lbl"  class="btn btn-secondary on" aria-pressed="true">Labels</button>
-          <button id="tg-dim"  class="btn btn-secondary on" aria-pressed="true">Dimensions</button>
-          <button id="tg-proj" class="btn btn-secondary on" aria-pressed="true">Projectors</button>
+      <div class="ctrl" data-ctrl="hp" hidden>
+        <label class="ctrl-label" for="r-hp">Distance above HP</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-hp" min="0" max="100" step="1" aria-label="Distance above HP in centimetres"/>
+          <input type="text" class="num" id="n-hp" inputmode="decimal" aria-describedby="note-hp" aria-label="Distance above HP, type a value"/>
+          <span class="unit">cm</span>
         </div>
+        <small class="ctrl-note" id="note-hp" role="status" hidden></small>
       </div>
 
-      <div class="ctrl" data-ctrl="fold" hidden>
-        <button id="btn-fold" class="btn btn-primary" style="width:100%">▶ Generate Orthographic Projection</button>
+      <div class="ctrl" data-ctrl="vp" hidden>
+        <label class="ctrl-label" for="r-vp">Distance in front of VP</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-vp" min="0" max="100" step="1" aria-label="Distance in front of VP in centimetres"/>
+          <input type="text" class="num" id="n-vp" inputmode="decimal" aria-describedby="note-vp" aria-label="Distance in front of VP, type a value"/>
+          <span class="unit">cm</span>
+        </div>
+        <small class="ctrl-note" id="note-vp" role="status" hidden></small>
       </div>
 
-      <!-- TRACES (HT / VT) — available on every line-position step -->
-      <div class="ctrl" data-ctrl="traces" hidden>
-        <button id="btn-traces" class="btn btn-secondary" style="width:100%" aria-expanded="false" aria-controls="traces-panel">⊹ Show Traces (HT &amp; VT)</button>
-        <div id="traces-panel" hidden>
-          <p class="con-cap" id="trace-cap" role="status" aria-live="polite">Finding the traces…</p>
-          <div class="pb-row">
-            <button id="trace-replay" class="btn btn-secondary pb-btn" title="Replay">↺ Replay</button>
-          </div>
-          <div class="con-note">
-            <p><b>A trace</b> is the point where a line (or its extension) meets a reference plane.</p>
-            <p><b class="sw-hp">HT</b> (Horizontal Trace): where the line meets HP. Extend the <b>front view</b> to XY at <b>h</b>, then project down to the top view.</p>
-            <p><b class="sw-vp">VT</b> (Vertical Trace): where the line meets VP. Extend the <b>top view</b> to XY at <b>v</b>, then project up to the front view.</p>
-            <ul class="con-legend">
-              <li><span class="lg lg-ht"></span> <b class="sw-hp">HT</b> = Horizontal Trace</li>
-              <li><span class="lg lg-vt"></span> <b class="sw-vp">VT</b> = Vertical Trace</li>
-              <li><span class="lg lg-pt"></span> <b>h</b> = front view meets XY</li>
-              <li><span class="lg lg-pt"></span> <b>v</b> = top view meets XY</li>
-              <li><span class="lg lg-perp">⊥</span> perpendicular projector</li>
-              <li><span class="lg lg-dash"></span> dashed = construction / extension</li>
-            </ul>
-            <p class="con-rules"><b>Rules:</b> ∥ to a plane → no trace on it · ⟂ to a plane → trace coincides with the projection point · <b>h</b> and <b>v</b> always lie on XY.</p>
-          </div>
+      <div class="ctrl" data-ctrl="pp" hidden>
+        <label class="ctrl-label" for="r-pp">Distance from PP (side)</label>
+        <div class="ctrl-row">
+          <input type="range" id="r-pp" min="0" max="100" step="1" aria-label="Distance from Profile Plane in centimetres"/>
+          <input type="text" class="num" id="n-pp" inputmode="decimal" aria-describedby="note-pp" aria-label="Distance from Profile Plane, type a value"/>
+          <span class="unit">cm</span>
         </div>
+        <small class="ctrl-note" id="note-pp" role="status" hidden></small>
       </div>
 
-      <!-- TRUE LENGTH & ANGLES (Rotating-Line method) — inclined-to-both only -->
-      <div class="ctrl" data-ctrl="truelength" hidden>
-        <button id="btn-tl" class="btn btn-secondary" style="width:100%" aria-expanded="false" aria-controls="tl-panel">∡ True Length &amp; Angles</button>
-        <div id="tl-panel" hidden>
-          <p class="con-cap" id="tl-cap" role="status" aria-live="polite"></p>
-          <p class="tl-step" id="tl-step"></p>
-          <div class="pb-row" role="group" aria-label="Construction playback">
-            <button id="tl-prev"   class="btn btn-secondary pb-btn" title="Previous step" aria-label="Previous step">⏮</button>
-            <button id="tl-play"   class="btn btn-primary  pb-btn" title="Play / Pause" aria-label="Play construction" aria-pressed="false">▶</button>
-            <button id="tl-next"   class="btn btn-secondary pb-btn" title="Next step" aria-label="Next step">⏭</button>
-            <button id="tl-replay" class="btn btn-secondary pb-btn" title="Replay" aria-label="Replay construction">↺</button>
-          </div>
-          <div class="con-note">
-            <p>When a line is inclined to <b>both</b> planes, neither projection shows the true length. The <b>Rotating-Line method</b> swings each view parallel to XY to reveal it.</p>
-            <p><span class="sw-tl">Part A</span> rotates the <b>top view</b> → True Length &amp; <b class="sw-hp">θ</b> (with HP). <span class="sw-tl">Part B</span> rotates the <b>front view</b> → True Length &amp; <b class="sw-vp">φ</b> (with VP).</p>
-            <p class="con-rules"><span class="sw-construct">construction</span> · <span class="sw-locus">locus</span> · <span class="sw-tl">true length</span></p>
-          </div>
-        </div>
+      <div class="ctrl" data-ctrl="anim" hidden>
+        <button id="btn-anim" class="btn btn-primary" style="width:100%">▶ Animate Unfolding</button>
       </div>
     </div>
 
@@ -461,7 +441,7 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
   </div>
 
   <div class="panel-foot">
-    <button id="btn-reset" class="btn btn-ghost">Reset line</button>
+    <button id="btn-reset" class="btn btn-ghost">Reset point</button>
   </div>
 </aside>
 
@@ -480,18 +460,24 @@ input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 2px var(--pap
     <button id="tb3" class="tb on">3D View</button>
     <button id="tb2" class="tb">2D Drawing</button>
   </div>
+  <!-- Mirrors the viewport's computed result as text. The 3D/2D scenes are WebGL
+       (unreadable by assistive tech); this is the readable equivalent of where P
+       and its views land, updated on every rebuild. -->
   <div id="vp-status" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
 </div>
 
+<!-- Inline term popover -->
 <div id="term-pop" role="tooltip"></div>
 
+<!-- Mobile notice -->
 <div id="mobile-note" role="note">
   <span>The 3D view stays pinned at the top while you scroll through the steps. Tap <b>3D</b> or <b>2D</b> below it to switch what it shows.</span>
   <button id="mobile-dismiss" class="btn btn-secondary" style="padding:0 var(--s4)">Got it</button>
 </div>
 
+<!-- Live region: announces step changes -->
 <div id="live" class="sr" role="status" aria-live="polite"></div>
 
-<script type="module" src="./lines.js"></script>
+<script type="module" src="./main.js"></script>
 </body>
 </html>
