@@ -248,17 +248,13 @@ section{
   letter-spacing: .05em;
   transition: background .2s;
 }
-.journey-step.is-current .journey-num {
-  background: var(--hp);
-}
+.journey-step.is-current .journey-num { background: var(--hp); }
 .journey-step.is-ahead .journey-num {
   background: transparent;
   color: var(--rule);
   border: 1px solid var(--rule);
 }
-.journey-body {
-  padding: 7px 0 30px;
-}
+.journey-body { padding: 7px 0 30px; }
 .journey-body h4 {
   font-size: 14px;
   font-weight: 500;
@@ -909,7 +905,7 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <tr>
           <td><span class="line-type-tag">Type E/F</span></td>
           <td>
-            <span class="line-preview-span" style="display:block;width:120px;height:2px;background:repeating-linear-gradient(90deg,#1a1814 0 8px,transparent 8px 12px)"></span>
+            <span class="line-preview-span" style="width:120px;height:2px;background:repeating-linear-gradient(90deg,#1a1814 0 8px,transparent 8px 12px)"></span>
           </td>
           <td class="line-name">Dashed Medium</td>
           <td>
@@ -920,7 +916,7 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <tr>
           <td><span class="line-type-tag">Type G</span></td>
           <td>
-            <span class="line-preview-span" style="display:block;width:120px;height:1px;background:repeating-linear-gradient(90deg,#1a1814 0 12px,transparent 12px 14px,#1a1814 14px 16px,transparent 16px 18px)"></span>
+            <span class="line-preview-span" style="width:120px;height:1px;background:repeating-linear-gradient(90deg,#1a1814 0 12px,transparent 12px 14px,#1a1814 14px 16px,transparent 16px 18px)"></span>
           </td>
           <td class="line-name">Chain Thin</td>
           <td>
@@ -931,7 +927,7 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <tr>
           <td><span class="line-type-tag">Type C</span></td>
           <td>
-            <span class="line-preview-span" style="display:block;width:120px;height:1px;background:repeating-linear-gradient(90deg,#1a1814 0 4px,transparent 4px 6px)"></span>
+            <span class="line-preview-span" style="width:120px;height:1px;background:repeating-linear-gradient(90deg,#1a1814 0 4px,transparent 4px 6px)"></span>
           </td>
           <td class="line-name">Continuous Thin Freehand</td>
           <td>
@@ -1065,7 +1061,7 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
     <div class="quad-diagram-wrap reveal">
       <div class="quad-diagram-svg-wrap">
         <svg viewBox="0 0 176 176" xmlns="http://www.w3.org/2000/svg" style="font-family:'DM Mono',monospace">
-          <!-- Quadrant fills (hover targets) — II top-left, I top-right, III bottom-left, IV bottom-right -->
+          <!-- Quadrant fills — II top-left, I top-right, III bottom-left, IV bottom-right -->
           <rect id="diag-q2" class="diag-cell" x="1" y="1" width="86" height="86" fill="#bc5d1e" fill-opacity=".07"/>
           <rect id="diag-q1" class="diag-cell" x="89" y="1" width="86" height="86" fill="#1f5fa8" fill-opacity=".07"/>
           <rect id="diag-q3" class="diag-cell" x="1" y="89" width="86" height="86" fill="#b08d3a" fill-opacity=".07"/>
@@ -1089,16 +1085,11 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
       </div>
     </div>
 
+    <!-- Cards arranged II | I / III | IV — matching the diagram above exactly -->
     <div class="quad-grid">
-      <div class="quad-card q1 reveal" id="card-q1">
-        <div class="quad-num">I</div>
-        <h3>First Quadrant</h3>
-        <div class="position">Above HP · In front of VP</div>
-        <p style="font-size:14px;color:var(--ink2);line-height:1.6;margin-bottom:14px">The most common quadrant used in practice (First Angle Projection — Indian standard).</p>
-        <span class="quad-badge badge-vp">p' above xy</span>
-        <span class="quad-badge badge-hp">p below xy</span>
-      </div>
-      <div class="quad-card q2 reveal reveal-delay-1" id="card-q2">
+
+      <!-- TOP-LEFT: Second Quadrant — matches diagram top-left -->
+      <div class="quad-card q2 reveal" id="card-q2">
         <div class="quad-num">II</div>
         <h3>Second Quadrant</h3>
         <div class="position">Above HP · Behind VP</div>
@@ -1106,6 +1097,18 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <span class="quad-badge badge-vp">p' above xy</span>
         <span class="quad-badge badge-hp">p above xy</span>
       </div>
+
+      <!-- TOP-RIGHT: First Quadrant — matches diagram top-right -->
+      <div class="quad-card q1 reveal reveal-delay-1" id="card-q1">
+        <div class="quad-num">I</div>
+        <h3>First Quadrant</h3>
+        <div class="position">Above HP · In front of VP</div>
+        <p style="font-size:14px;color:var(--ink2);line-height:1.6;margin-bottom:14px">The most common quadrant used in practice (First Angle Projection — Indian standard).</p>
+        <span class="quad-badge badge-vp">p' above xy</span>
+        <span class="quad-badge badge-hp">p below xy</span>
+      </div>
+
+      <!-- BOTTOM-LEFT: Third Quadrant — matches diagram bottom-left -->
       <div class="quad-card q3 reveal reveal-delay-2" id="card-q3">
         <div class="quad-num">III</div>
         <h3>Third Quadrant</h3>
@@ -1114,6 +1117,8 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <span class="quad-badge badge-vp">p' below xy</span>
         <span class="quad-badge badge-hp" style="background:rgba(42,138,74,.1);color:#2a8a4a">p above xy</span>
       </div>
+
+      <!-- BOTTOM-RIGHT: Fourth Quadrant — matches diagram bottom-right -->
       <div class="quad-card q4 reveal reveal-delay-3" id="card-q4">
         <div class="quad-num">IV</div>
         <h3>Fourth Quadrant</h3>
@@ -1122,6 +1127,7 @@ footer p{font-size:12px;color:rgba(247,243,235,.35);font-family:'DM Mono',monosp
         <span class="quad-badge badge-vp" style="background:rgba(176,141,58,.1);color:var(--gold)">p' below xy</span>
         <span class="quad-badge badge-hp" style="background:rgba(176,141,58,.1);color:var(--gold)">p below xy</span>
       </div>
+
     </div>
   </div>
 </section>
@@ -1180,30 +1186,33 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 // ── Quadrant diagram hover ──
+// Diagram layout: diag-q2 top-left, diag-q1 top-right, diag-q3 bottom-left, diag-q4 bottom-right.
+// Card layout mirrors diagram exactly: card-q2 top-left, card-q1 top-right, card-q3 bottom-left, card-q4 bottom-right.
+// Hovering any diagram cell highlights the card in the same screen position.
 const quadData = {
   q1: {
     title: 'First Quadrant',
     desc: 'Point is <strong>Above HP</strong> and <strong>In front of VP</strong>. Front view (p\') appears above XY; top view (p) appears below XY. Used in First Angle Projection.',
     b1: { text: "p' above xy", cls: 'badge-vp' },
-    b2: { text: 'p below xy', cls: 'badge-hp' }
+    b2: { text: 'p below xy',  cls: 'badge-hp' }
   },
   q2: {
     title: 'Second Quadrant',
     desc: 'Point is <strong>Above HP</strong> and <strong>Behind VP</strong>. Both p\' and p appear above XY — views can overlap, creating ambiguity.',
     b1: { text: "p' above xy", cls: 'badge-vp' },
-    b2: { text: 'p above xy', cls: 'badge-hp' }
+    b2: { text: 'p above xy',  cls: 'badge-hp' }
   },
   q3: {
     title: 'Third Quadrant',
     desc: 'Point is <strong>Below HP</strong> and <strong>Behind VP</strong>. Used in Third Angle Projection (American standard). Views are arranged opposite to First Angle.',
     b1: { text: "p' below xy", cls: 'badge-vp' },
-    b2: { text: 'p above xy', cls: 'badge-hp' }
+    b2: { text: 'p above xy',  cls: 'badge-hp' }
   },
   q4: {
     title: 'Fourth Quadrant',
     desc: 'Point is <strong>Below HP</strong> and <strong>In front of VP</strong>. Both p\' and p appear below XY — views overlap. Not used in standard engineering practice.',
     b1: { text: "p' below xy", cls: 'badge-vp' },
-    b2: { text: 'p below xy', cls: 'badge-hp' }
+    b2: { text: 'p below xy',  cls: 'badge-hp' }
   }
 };
 
@@ -1246,11 +1255,11 @@ function checkAnswer(choice) {
   if (choice === 'a') {
     optA.classList.add('correct');
     optB.classList.add('incorrect');
-    fb.innerHTML = '<strong>✓ Correct.</strong> Dimension lines must always be placed outside the object boundary, connected by thin extension lines. Placing a dimension line through the object body is a violation of SP 46:2003 and creates ambiguity for the manufacturer.';
+    fb.innerHTML = '<strong>&#10003; Correct.</strong> Dimension lines must always be placed outside the object boundary, connected by thin extension lines. Placing a dimension line through the object body is a violation of SP 46:2003 and creates ambiguity for the manufacturer.';
   } else {
     optB.classList.add('incorrect');
     optA.classList.add('correct');
-    fb.innerHTML = '<strong>✗ Not quite.</strong> Dimension lines must not pass through the object. They belong outside, connected to the boundary by extension lines. This is a fundamental rule of SP 46:2003 — Option A shows the correct practice.';
+    fb.innerHTML = '<strong>&#10007; Not quite.</strong> Dimension lines must not pass through the object. They belong outside, connected to the boundary by extension lines. This is a fundamental rule of SP 46:2003 — Option A shows the correct practice.';
   }
   fb.classList.add('visible');
 }
