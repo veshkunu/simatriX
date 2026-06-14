@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vector Resolution — Simatrix Engineering Mechanics</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Three.js CDN via import map — requires a modern browser -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ── Main area ─────────────────────────────────────────────────── -->
+    <div class="main-area">
+
+      <!-- Viewport -->
+      <div class="viewport-wrap" role="img" aria-label="Force diagram">
+        <canvas id="sim-canvas" aria-hidden="true"></canvas>
+
+        <!-- HTML labels (positioned by JS) -->
+        <div class="scene-labels" aria-hidden="true">
+          <span id="label-x"      class="scene-label scene-label--axis"   style="display:none">X</span>
+          <span id="label-y"      class="scene-label scene-label--axis"   style="display:none">Y</span>
+          <span id="label-origin" class="scene-label scene-label--origin" style="display:none">O</span>
+          <span id="label-force"  class="scene-label scene-label--force"  style="display:none"></span>
+          <span id="label-theta"  class="scene-label scene-label--theta"  style="display:none">θ</span>
+          <span id="label-fx"     class="scene-label scene-label--fx"     style="display:none"></span>
+          <span id="label-fy"     class="scene-label scene-label--fy"     style="display:none"></span>
+        </div>
+
+        <!-- Empty state (hidden after first render) -->
+        <div class="empty-state" id="empty-state" aria-hidden="true">
+          <p>Your diagram will appear here</p>
+        </div>
+      </div>
+
+      <!-- ── Step panel ──────────────────────────────────────────────── -->
+      <aside class="step-panel" aria-label="Lesson panel">
+
+        <!-- Module learning objective — static throughout -->
+        <div class="learning-objective" aria-label="Learning objective">
+          <span class="label lo-label">Learning Objective</span>
+          <p class="lo-text">Understand how a force acting at an angle can be split into horizontal and vertical components.</p>
+        </div>
+
+        <div class="step-eyebrow">
+          <span class="label" id="step-counter" aria-live="polite" tabindex="-1">Step 1 of 5</span>
+        </div>
+
+        <div class="step-card" id="step-card">
+          <h1 class="step-title" id="step-title"></h1>
+          <p  class="step-lead"  id="step-lead"></p>
+
+          <!-- What You Are Seeing — dynamic per step -->
+          <div class="concept-panel" id="concept-panel" style="display:none"></div>
+
+          <div class="hint-callout" id="step-hint"></div>
+
+          <div class="controls-area"   id="controls-area"></div>
+          <div class="guidance-callout" id="step-guidance" style="display:none"></div>
+
+          <!-- Concept insight — Step 5 only, updates live with angle -->
+          <div class="insight-callout" id="concept-insight" style="display:none" aria-live="polite">
+            <span class="insight-title label">Concept Insight</span>
+            <p data-insight-text></p>
+          </div>
+
+          <div class="equations-area"  id="equations-area"></div>
+
+          <!-- Real-world example — dynamic per step -->
+          <div class="realworld-callout" id="realworld-callout" style="display:none"></div>
+
+          <!-- Concept-check question — Steps 2 and 3 -->
+          <div class="concept-check" id="concept-check" style="display:none"></div>
+
+          <div class="step-actions">
+            <button class="btn-secondary" id="btn-back" aria-label="Go to previous step">Back</button>
+            <button class="btn-primary"   id="btn-next" aria-label="Go to next step">Next →</button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ── Step navigation rail — slim column at right edge ──────────── -->
+      <nav class="step-rail" aria-label="Lesson steps" role="list"></nav>
+
+    </div><!-- /.main-area -->
+
+  </div><!-- /.app-shell -->
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
