@@ -1,0 +1,6 @@
+{
+  "title": "Projection of Points",
+  "description": "Visualize how a point in 3D space projects onto the Horizontal (HP) and Vertical (VP) reference planes across all four quadrants.",
+  "difficulty": "Beginner",
+  "tags": ["engineering-graphics", "projection-of-points", "quadrants", "hp-vp", "3d"]
+}
